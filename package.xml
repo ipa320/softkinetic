@@ -6,11 +6,7 @@
 
   <maintainer email="flg@ipa.fhg.de">Felipe Garcia Lopez</maintainer>
 
-
-  <!-- One license tag required, multiple allowed, one license per tag -->
-  <!-- Commonly used license strings: -->
-  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>proprietary Softkinetic DepthSense</license>
+  <license>BSDe</license>
 
   <author email="flg@ipa.fhg.de">Felipe Garcia Lopez</author>
   
