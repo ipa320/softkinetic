@@ -9,7 +9,7 @@ else()
   message(STATUS "+++++++++ Found DepthSense.hxx +++++++++")
 endif()
 
-find_package(catkin REQUIRED COMPONENTS pcl_ros cv_bridge roscpp rospy std_msgs image_transport message_generation Eigen)
+find_package(catkin REQUIRED COMPONENTS pcl_ros cv_bridge roscpp rospy std_msgs image_transport message_generation)
 
 #######################################
 ## Declare ROS messages and services ##
