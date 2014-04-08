@@ -21,7 +21,7 @@ To download, you will need to create a free account
 
 
 #### Published Topics
-**PointCloud2** *(sensor_msgs::PointCloud2)*   
+**depth_registered/points** *(sensor_msgs::PointCloud2)*   
  Publishes point clouds detected by the camera.
 
 **rgb_data** *(sensor_msgs::Image)*   
