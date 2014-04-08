@@ -14,7 +14,11 @@ To download, you will need to create a free account
 **camera_link** *(string, default: "/softkinetic_link")*   
  The frame ID of the camera.
 
-...
+**confidence_threshold** *(int, default: 150)*   
+ Confidence threshold for DepthNode configuration.
+ Sensor noise is filtered by increasing the threshold.
+ Threshold needs to be within [0, 32767].
+
 
 #### Published Topics
 **PointCloud2** *(sensor_msgs::PointCloud2)*   
