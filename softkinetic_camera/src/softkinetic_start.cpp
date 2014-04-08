@@ -111,6 +111,8 @@ std_msgs::Int32 test_int;
 pcl::PointCloud<pcl::PointXYZRGB> cloud;
 
 int offset;
+/* confidence threshold for DepthNode configuration*/
+int confidence_threshold;
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
@@ -277,7 +279,7 @@ void configureDepthNode()
 
     g_dnode.setEnableVertices(true);
     g_dnode.setEnableConfidenceMap(true);
-    g_dnode.setConfidenceThreshold(150);
+    g_dnode.setConfidenceThreshold(confidence_threshold);
     g_dnode.setEnableVerticesFloatingPoint(true);
     g_dnode.setEnableDepthMapFloatingPoint(true);
 
@@ -442,6 +444,11 @@ int main(int argc, char* argv[])
         ROS_WARN("Parameter 'camera_link' is missing. Using default Value");
     nh.param<std::string>("camera_link", softkinetic_link, "/softkinetic_link");
     cloud.header.frame_id = softkinetic_link;
+
+    // get confidence threshold from parameter server  
+    if(!nh.hasParam("confidence_threshold"))
+        ROS_WARN("Parameter 'confidence_threshold' is not set on server. Using default Value");
+    nh.param<int>("confidence_threshold", confidence_threshold, 150);
 
     offset = ros::Time::now().toSec();
     //initialize image transport object

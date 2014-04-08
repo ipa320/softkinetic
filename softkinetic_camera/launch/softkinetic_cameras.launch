@@ -6,10 +6,12 @@ The arguments given are the device indices of the cameras determined by the Dept
 -->
 <launch>
   	<node name="softkinetic_left" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="0" >
-  		<param name="camera_link" type="string" value="/softkinetic_left_link" /> 
+  		<param name="camera_link" type="string" value="/softkinetic_left_link" />
+  		<param name="confidence_threshold" type="int" value="150" /> 
   	</node>
-
   	<node name="softkinetic_right" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="1" >
   		<param name="camera_link" type="string" value="/softkinetic_right_link" /> 
+  		<param name="confidence_threshold" type="int" value="150" />
   	</node>
+
 </launch>
