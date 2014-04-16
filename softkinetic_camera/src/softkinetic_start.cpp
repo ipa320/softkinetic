@@ -472,6 +472,10 @@ int main(int argc, char* argv[])
     // By default, index 0 is taken:  
     int device_index = 0;
     std::cout << "Number of Devices ::::::::::::::::: " << da.size() << std::endl;
+    if(da.size() == 0)
+    {
+        ROS_ERROR_STREAM("Number of Devices:" << da.size());
+    };
     if (da.size() >= 1)
     { 
         // if camera index comes as argument, device_index will be updated
