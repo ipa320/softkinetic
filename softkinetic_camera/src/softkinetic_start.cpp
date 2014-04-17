@@ -170,7 +170,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     int count = -1;
     
     //cloud.header.stamp.nsec = g_dFrames++;
-    cloud.header.stamp = ros::Time::now();
+    std_msgs::Header std_header;
+    std_header.stamp = ros::Time::now();
+    cloud.header = pcl_conversions::toPCL(std_header);
     // Project some 3D points in the Color Frame
     if (!g_pProjHelper)
     {
