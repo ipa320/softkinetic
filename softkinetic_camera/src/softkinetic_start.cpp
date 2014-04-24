@@ -471,10 +471,10 @@ int main(int argc, char* argv[])
     // In case there are several devices, index of camera to start ought to come as an argument
     // By default, index 0 is taken:  
     int device_index = 0;
-    std::cout << "Number of Devices ::::::::::::::::: " << da.size() << std::endl;
+    ROS_INFO_STREAM("Number of Devices ::::::::::::::::: " << da.size());
     if(da.size() == 0)
     {
-        ROS_ERROR_STREAM("Number of Devices:" << da.size());
+        ROS_ERROR_STREAM("No devices found!");
     };
     if (da.size() >= 1)
     { 
