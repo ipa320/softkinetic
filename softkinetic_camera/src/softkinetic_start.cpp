@@ -443,13 +443,13 @@ int main(int argc, char* argv[])
     // get frame id from parameter server
     std::string softkinetic_link;
     if(!nh.hasParam("camera_link"))
-        ROS_WARN("Parameter 'camera_link' is missing. Using default Value");
-    nh.param<std::string>("camera_link", softkinetic_link, "/softkinetic_link");
+        ROS_WARN_STREAM("For " << ros::this_node::getName() << ", parameter 'camera_link' is missing. Using default Value /softkinetic_link");
+    nh.param<std::string>("camera_link", softkinetic_link, "softkinetic_link");
     cloud.header.frame_id = softkinetic_link;
 
     // get confidence threshold from parameter server  
     if(!nh.hasParam("confidence_threshold"))
-        ROS_WARN("Parameter 'confidence_threshold' is not set on server. Using default Value");
+       ROS_WARN_STREAM("For " << ros::this_node::getName() << ", parameter 'confidence_threshold' is not set on server. Using default Value '150'");
     nh.param<int>("confidence_threshold", confidence_threshold, 150);
 
     offset = ros::Time::now().toSec();
@@ -471,7 +471,7 @@ int main(int argc, char* argv[])
     // In case there are several devices, index of camera to start ought to come as an argument
     // By default, index 0 is taken:  
     int device_index = 0;
-    ROS_INFO_STREAM("Number of Devices ::::::::::::::::: " << da.size());
+    ROS_INFO_STREAM("Number of Devices found ::::::::::::::::: " << da.size());
     if(da.size() == 0)
     {
         ROS_ERROR_STREAM("No devices found!");
