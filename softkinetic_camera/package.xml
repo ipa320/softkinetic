@@ -1,15 +1,14 @@
 <?xml version="1.0"?>
 <package>
   <name>softkinetic_camera</name>
-  <version>1.0.0</version>
+  <version>0.1.0</version>
   <description>The softkinetic_camera package</description>
 
   <maintainer email="flg@ipa.fhg.de">Felipe Garcia Lopez</maintainer>
+  <author email="flg@ipa.fhg.de">Felipe Garcia Lopez</author>
 
   <license>BSD</license>
 
-  <author email="flg@ipa.fhg.de">Felipe Garcia Lopez</author>
-  
   <!-- The *_depend tags are used to specify dependencies -->
   <!-- Dependencies can be catkin packages or system dependencies -->
   <buildtool_depend>catkin</buildtool_depend>
