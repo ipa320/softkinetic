@@ -69,6 +69,7 @@
 #include <pcl/io/io.h>
 #include <pcl/point_types.h>
 #include <pcl/range_image/range_image.h>
+#include <pcl/filters/radius_outlier_removal.h>
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
@@ -110,6 +111,12 @@ sensor_msgs::PointCloud2 cloud;
 int offset;
 /* confidence threshold for DepthNode configuration*/
 int confidence_threshold;
+/* parameters for radius filter*/
+bool use_radius_filter;
+double search_radius;
+int minNeighboursInRadius;
+/* shutdown request*/
+bool ros_node_shutdown = false;
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
@@ -162,12 +169,31 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 }
 
 /*----------------------------------------------------------------------------*/
+void filterCloudRadiusBased()
+{
+    // radius based filter:
+    // Convert the sensor_msgs/PointCloud2 data to pcl/PointCloud
+    pcl::PointCloud<pcl::PointXYZ>::Ptr
+        cloud_to_filter(new pcl::PointCloud<pcl::PointXYZ> ()),
+        cloud_filtered(new pcl::PointCloud<pcl::PointXYZ> ());
+    pcl::fromROSMsg (cloud, *cloud_to_filter);
+    
+    pcl::RadiusOutlierRemoval<pcl::PointXYZ> ror;
+    ror.setInputCloud(cloud_to_filter);
+    ror.setRadiusSearch(search_radius);
+    ror.setMinNeighborsInRadius(minNeighboursInRadius);
+    // apply filter
+    ror.filter(*cloud_filtered);
+
+    pcl::toROSMsg (*cloud_filtered, cloud);
+    cloud.header.stamp = ros::Time::now();
+}
+
 // New depth sample event varsace tieshandler
 void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
     pcl::PointCloud<pcl::PointXYZRGB> current_cloud;
-
-    //printf("Z#%u: %d %d %d\n",g_dFrames,data.vertices[500].x,data.vertices[500].y,data.vertices[500].z);
+    
     int count = -1;
     
     // Project some 3D points in the Color Frame
@@ -220,10 +246,17 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 	    }
     }
 
+  
     //convert current_cloud to PointCloud2
     pcl::toROSMsg(current_cloud, cloud);
     cloud.header.stamp = ros::Time::now();
 
+    //check for usage of radius filtering
+    if(use_radius_filter)
+    {
+		filterCloudRadiusBased();
+    }
+    
     pub_cloud.publish (cloud);
     g_context.quit();
 }
@@ -443,15 +476,41 @@ int main(int argc, char* argv[])
     // get frame id from parameter server
     std::string softkinetic_link;
     if(!nh.hasParam("camera_link"))
-        ROS_WARN_STREAM("For " << ros::this_node::getName() << ", parameter 'camera_link' is missing. Using default Value /softkinetic_link");
+    {    
+	ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'camera_link' is missing.");
+	ros_node_shutdown = true;
+    };
+    
     nh.param<std::string>("camera_link", softkinetic_link, "softkinetic_link");
     cloud.header.frame_id = softkinetic_link;
 
     // get confidence threshold from parameter server  
     if(!nh.hasParam("confidence_threshold"))
-       ROS_WARN_STREAM("For " << ros::this_node::getName() << ", parameter 'confidence_threshold' is not set on server. Using default Value '150'");
+    {   
+	ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'confidence_threshold' is not set on server.");
+       	ros_node_shutdown = true;
+    };
     nh.param<int>("confidence_threshold", confidence_threshold, 150);
-
+    
+    // check for usage of radius filtering
+    nh.param<bool>("use_radius_filter", use_radius_filter, false);
+    if(use_radius_filter)
+    {
+ 	if(!nh.hasParam("search_radius"))
+       	{	
+		ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'search_radius' is not set on server.");
+		ros_node_shutdown = true;
+	};
+	nh.param<double>("search_radius", search_radius, 0.5);
+	
+	if(!nh.hasParam("minNeighboursInRadius"))
+	{       		
+		ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'minNeighboursInRadius' is not set on server.");
+		ros_node_shutdown;
+	};	
+	nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
+    };
+    
     offset = ros::Time::now().toSec();
     //initialize image transport object
     image_transport::ImageTransport it(nh);
@@ -471,10 +530,10 @@ int main(int argc, char* argv[])
     // In case there are several devices, index of camera to start ought to come as an argument
     // By default, index 0 is taken:  
     int device_index = 0;
-    ROS_INFO_STREAM("Number of Devices found ::::::::::::::::: " << da.size());
+    ROS_INFO_STREAM("Number of Devices found: " << da.size());
     if(da.size() == 0)
     {
-        ROS_ERROR_STREAM("No devices found!");
+        ROS_ERROR_STREAM("No devices found!!!!!!");
     };
     if (da.size() >= 1)
     { 
@@ -496,6 +555,9 @@ int main(int argc, char* argv[])
             configureNode(na[n]);
     }
     //loop while ros core is operational or Ctrl-C is used
+    if(ros_node_shutdown){
+	ros::shutdown();
+    }
     while(ros::ok()){
     	g_context.startNodes();
     	g_context.run();
