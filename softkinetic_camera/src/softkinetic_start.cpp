@@ -70,6 +70,7 @@
 #include <pcl/point_types.h>
 #include <pcl/range_image/range_image.h>
 #include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
@@ -169,24 +170,48 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 }
 
 /*----------------------------------------------------------------------------*/
-void filterCloudRadiusBased()
+
+void downsampleCloud(sensor_msgs::PointCloud2 &Input)
+{
+        pcl::PointCloud<pcl::PointXYZ>::Ptr
+                cloud_to_filter(new pcl::PointCloud<pcl::PointXYZ> ()),
+                cloud_filtered(new pcl::PointCloud<pcl::PointXYZ> ());
+
+        pcl::fromROSMsg (Input, *cloud_to_filter);
+
+       ROS_INFO_STREAM("Starting downsampling");
+       pcl::VoxelGrid<pcl::PointXYZ> sor;
+       sor.setInputCloud (cloud_to_filter);
+       sor.setLeafSize (0.01f, 0.01f, 0.01f);
+       sor.filter (*cloud_filtered);
+       ROS_INFO_STREAM("downsampled!");   
+       
+       pcl::toROSMsg (*cloud_filtered, Input);      
+             
+}
+
+void filterCloudRadiusBased(sensor_msgs::PointCloud2 &Input)
 {
     // radius based filter:
     // Convert the sensor_msgs/PointCloud2 data to pcl/PointCloud
     pcl::PointCloud<pcl::PointXYZ>::Ptr
         cloud_to_filter(new pcl::PointCloud<pcl::PointXYZ> ()),
         cloud_filtered(new pcl::PointCloud<pcl::PointXYZ> ());
-    pcl::fromROSMsg (cloud, *cloud_to_filter);
+    pcl::fromROSMsg (Input, *cloud_to_filter);
     
     pcl::RadiusOutlierRemoval<pcl::PointXYZ> ror;
     ror.setInputCloud(cloud_to_filter);
     ror.setRadiusSearch(search_radius);
     ror.setMinNeighborsInRadius(minNeighboursInRadius);
     // apply filter
+    ROS_INFO_STREAM("Starting filtering");
+    double old_ = ros::Time::now().toSec(); 
     ror.filter(*cloud_filtered);
-
-    pcl::toROSMsg (*cloud_filtered, cloud);
+    double new_= ros::Time::now().toSec() - old_;
+    ROS_INFO_STREAM("filtered in " << new_ << " seconds");
     cloud.header.stamp = ros::Time::now();
+
+    pcl::toROSMsg (*cloud_filtered, Input);
 }
 
 // New depth sample event varsace tieshandler
@@ -249,12 +274,13 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   
     //convert current_cloud to PointCloud2
     pcl::toROSMsg(current_cloud, cloud);
-    cloud.header.stamp = ros::Time::now();
+
 
     //check for usage of radius filtering
     if(use_radius_filter)
     {
-		filterCloudRadiusBased();
+                downsampleCloud(cloud);
+		filterCloudRadiusBased(cloud);
     }
     
     pub_cloud.publish (cloud);
