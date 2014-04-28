@@ -109,6 +109,7 @@ image_transport::Publisher pub_rgb;
 sensor_msgs::Image image;
 std_msgs::Int32 test_int;
 pcl::PointCloud<pcl::PointXYZRGB> cloud;
+std::string softkinetic_link_;
 
 int offset;
 
@@ -124,6 +125,7 @@ void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 // New color sample event handler
 void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 {   
+    /*
     ros::NodeHandle n_color("~");
     std::string softkinetic_link;
     if (n_color.getParam("/camera_link", softkinetic_link))
@@ -134,6 +136,9 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     {
         image.header.frame_id = "/softkinetic_link";
     }
+    */
+    image.header.frame_id = softkinetic_link_;
+
     //Create a sensor_msg::Image for ROS based on the new camera image
     //image.header.stamp.nsec = g_cFrames++*1000;
     image.header.stamp = ros::Time::now();
@@ -172,7 +177,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     //cloud.header.stamp.nsec = g_dFrames++;
     std_msgs::Header std_header;
     std_header.stamp = ros::Time::now();
+    std_header.frame_id = softkinetic_link_;
     cloud.header = pcl_conversions::toPCL(std_header);
+
     // Project some 3D points in the Color Frame
     if (!g_pProjHelper)
     {
@@ -439,11 +446,10 @@ int main(int argc, char* argv[])
     ros::NodeHandle nh("~");
 
     // get frame id from parameter server
-    std::string softkinetic_link;
     if(!nh.hasParam("camera_link"))
         ROS_WARN("Parameter 'camera_link' is missing. Using default Value");
-    nh.param<std::string>("camera_link", softkinetic_link, "/softkinetic_link");
-    cloud.header.frame_id = softkinetic_link;
+    nh.param<std::string>("camera_link", softkinetic_link_, "/softkinetic_link");
+    cloud.header.frame_id = softkinetic_link_;
 
     offset = ros::Time::now().toSec();
     //initialize image transport object
