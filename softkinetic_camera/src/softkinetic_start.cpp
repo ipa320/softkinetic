@@ -66,8 +66,11 @@
 
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/io/pcd_io.h>
+#include <pcl/io/io.h>
 #include <pcl/point_types.h>
 #include <pcl/range_image/range_image.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
