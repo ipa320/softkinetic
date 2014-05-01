@@ -6,6 +6,9 @@ The arguments given are the device indices of the cameras determined by the Dept
 <launch>
   <node name="softkinetic_camera" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="0" output="screen" >
     <param name="camera_link" type="string" value="/softkinetic_camera_link" />
+    <param name="confidence_threshold" type="int" value="200" />
+    <param name="use_radius_filter" type="bool" value="false" />
+    <param name="search_radius" type="double" value="0.05" />
   </node>
 
   <node pkg="tf" type="static_transform_publisher" name="softkinect_tf"
