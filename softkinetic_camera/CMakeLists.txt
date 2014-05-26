@@ -44,3 +44,8 @@ link_directories(/opt/softkinetic/DepthSenseSDK/lib)
 add_executable(softkinetic_bringup_node src/softkinetic_start.cpp)
 target_link_libraries(softkinetic_bringup_node DepthSense ${catkin_LIBRARIES})
 
+install(TARGETS softkinetic_bringup_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
