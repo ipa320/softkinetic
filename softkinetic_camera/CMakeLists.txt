@@ -1,15 +1,20 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(softkinetic_camera)
 
-if(NOT EXISTS "/opt/softkinetic/DepthSenseSDK/include/DepthSense.hxx")
- message(WARNING "+++++++++ Did not find DepthSense.hxx +++++++++")
- message(WARNING "+++++++++ Please install DepthSenseSDK, see README.txt +++++++++")  
- return()
-else()
-  message(STATUS "+++++++++ Found DepthSense.hxx +++++++++")
+find_package(catkin REQUIRED COMPONENTS pcl_ros cv_bridge roscpp rospy std_msgs image_transport message_generation)
+
+# find the DepthSense SDK
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
+find_package(DepthSenseSDK)
+
+if(NOT DepthSenseSDK_FOUND)
+  message(FATAL_ERROR "+++++++++ Could not locate the DepthSense SDK +++++++++
+Please install the SDK before trying to build the 'softkinetic_camera' package, see README.txt.
+
+Cannot continue, aborting.")
+  return()
 endif()
 
-find_package(catkin REQUIRED COMPONENTS pcl_ros cv_bridge roscpp rospy std_msgs image_transport message_generation)
 
 #######################################
 ## Declare ROS messages and services ##
@@ -34,15 +39,13 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
+  ${DepthSenseSDK_INCLUDE_DIRS}
 )
 
-include_directories(/opt/softkinetic/DepthSenseSDK/include)
-include_directories(/usr/include/suitesparse)
-
-link_directories(/opt/softkinetic/DepthSenseSDK/lib)
+#include_directories(/usr/include/suitesparse)
 
 add_executable(softkinetic_bringup_node src/softkinetic_start.cpp)
-target_link_libraries(softkinetic_bringup_node DepthSense ${catkin_LIBRARIES})
+target_link_libraries(softkinetic_bringup_node ${DepthSenseSDK_LIBRARIES} ${catkin_LIBRARIES})
 
 install(TARGETS softkinetic_bringup_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
