@@ -120,6 +120,15 @@ double search_radius;
 int minNeighboursInRadius;
 /* shutdown request*/
 bool ros_node_shutdown = false;
+/* depth sensor parameters */
+DepthSense::DepthNode::CameraMode depth_mode;
+DepthSense::FrameFormat depth_frame_format;
+int depth_frame_rate;
+/* color sensor parameters */
+DepthSense::CompressionType color_compression;
+DepthSense::FrameFormat color_frame_format;
+int color_frame_rate;
+
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
@@ -317,9 +326,10 @@ void configureDepthNode()
     g_dnode.newSampleReceivedEvent().connect(&onNewDepthSample);
 
     DepthNode::Configuration config = g_dnode.getConfiguration();
-    config.frameFormat = FRAME_FORMAT_QVGA;
-    config.framerate = 25;
-    config.mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+
+    config.frameFormat = depth_frame_format;
+    config.framerate = depth_frame_rate;
+    config.mode = depth_mode;
     config.saturation = true;
 
     g_context.requestControl(g_dnode,0);
@@ -374,10 +384,11 @@ void configureColorNode()
     g_cnode.newSampleReceivedEvent().connect(&onNewColorSample);
 
     ColorNode::Configuration config = g_cnode.getConfiguration();
-    config.frameFormat = FRAME_FORMAT_WXGA_H;
-    config.compression = COMPRESSION_TYPE_MJPEG;
+
+    config.frameFormat = color_frame_format;
+    config.compression = color_compression;
     config.powerLineFrequency = POWER_LINE_FREQUENCY_50HZ;
-    config.framerate = 25;
+    config.framerate = color_frame_rate;
 
     g_cnode.setEnableColorMap(true);
 
@@ -525,6 +536,47 @@ int main(int argc, char* argv[])
         // downsampling cloud parameters
         nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
     };
+
+    std::string depth_mode_str;
+    nh.param<std::string>("depth_mode", depth_mode_str, "close");
+    if ( depth_mode_str == "long" )
+      depth_mode = DepthNode::CAMERA_MODE_LONG_RANGE;
+    else
+      depth_mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+
+    std::string depth_frame_format_str;
+    nh.param<std::string>("depth_frame_format", depth_frame_format_str, "QVGA");
+    if ( depth_frame_format_str == "QQVGA" )
+      depth_frame_format = FRAME_FORMAT_QQVGA;
+    else if ( depth_frame_format_str == "QVGA" )
+      depth_frame_format = FRAME_FORMAT_QVGA;
+    else
+      depth_frame_format = FRAME_FORMAT_VGA;
+
+    nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
+
+    std::string color_compression_str;
+    nh.param<std::string>("color_compression", color_compression_str, "MJPEG");
+    if ( color_compression_str == "YUY2" )
+      color_compression = COMPRESSION_TYPE_YUY2;
+    else
+      color_compression = COMPRESSION_TYPE_MJPEG;
+
+    std::string color_frame_format_str;
+    nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
+    if ( color_frame_format_str == "QQVGA" )
+      color_frame_format = FRAME_FORMAT_QQVGA;
+    else if ( color_frame_format_str == "QVGA" )
+      color_frame_format = FRAME_FORMAT_QVGA;
+    else if ( color_frame_format_str == "VGA" )
+      color_frame_format = FRAME_FORMAT_VGA;
+    else if ( color_frame_format_str == "NHD" )
+      color_frame_format = FRAME_FORMAT_NHD;
+    else
+      color_frame_format = FRAME_FORMAT_WXGA_H;
+
+    nh.param<int>("color_frame_rate", color_frame_rate, 25);
+
 
     offset = ros::Time::now().toSec();
     //initialize image transport object
