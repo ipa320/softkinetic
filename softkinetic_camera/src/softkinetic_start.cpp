@@ -104,6 +104,7 @@ StereoCameraParameters g_scp;
 
 ros::Publisher pub_cloud;
 image_transport::Publisher pub_rgb;
+image_transport::Publisher pub_depth;
 
 sensor_msgs::Image image;
 std_msgs::Int32 test_int;
@@ -216,6 +217,21 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
 
+    sensor_msgs::Image depth_img_msg;
+    ros::NodeHandle n_depth("~");
+
+    //fill in the depth image message header
+    std::string softkinetic_link;
+    if (n_depth.getParam("/camera_link", softkinetic_link))
+    {
+        depth_img_msg.header.frame_id = softkinetic_link.c_str();
+    }
+    else
+    {
+        depth_img_msg.header.frame_id = "/softkinetic_link";
+    }
+    depth_img_msg.header.stamp = ros::Time::now();
+
     int count = -1;
 
     // Project some 3D points in the Color Frame
@@ -232,6 +248,15 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
+
+    depth_img_msg.width = w;
+    depth_img_msg.height = h;
+    depth_img_msg.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+    depth_img_msg.is_bigendian = 0;
+    depth_img_msg.step = sizeof(float)*w;
+    std::size_t data_size = depth_img_msg.width*depth_img_msg.height;
+    depth_img_msg.data.resize(data_size*sizeof(float));
+
     int cx = w/2;
     int cy = h/2;
 
@@ -250,6 +275,8 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     uint32_t rgb;
     cv::Vec3b bgr;
 
+    float* depth_img_ptr = reinterpret_cast<float*>(&depth_img_msg.data[0]);
+
     for(int i = 1;i < h ;i++){
         for(int j = 1;j < w ; j++){
             count++;
@@ -264,6 +291,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
             g_pProjHelper->get2DCoordinates ( p3DPoints, p2DPoints, 1, CAMERA_PLANE_COLOR);
             int x_pos = (int)p2DPoints[0].x;
             int y_pos = (int)p2DPoints[0].y;
+
+            *depth_img_ptr = data.depthMapFloatingPoint[count];
+            ++depth_img_ptr;
         }
     }
 
@@ -279,6 +309,8 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     pcl::toROSMsg(*current_cloud, cloud);
 
     pub_cloud.publish (cloud);
+    pub_depth.publish (depth_img_msg);
+
     g_context.quit();
 }
 
@@ -585,6 +617,7 @@ int main(int argc, char* argv[])
     //initialize publishers
     pub_cloud = nh.advertise<sensor_msgs::PointCloud2> ("depth_registered/points", 1);
     pub_rgb = it.advertise ("rgb_data", 1);
+    pub_depth = it.advertise ("depth_registered/image", 1);
 
     g_context = Context::create("softkinetic");
 
