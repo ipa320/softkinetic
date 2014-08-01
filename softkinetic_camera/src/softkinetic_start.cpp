@@ -114,6 +114,7 @@ int offset;
 /* confidence threshold for DepthNode configuration*/
 int confidence_threshold;
 /* parameters for downsampling cloud */
+bool use_voxel_grid_filter;
 double voxel_grid_side;
 /* parameters for radius filter */
 bool use_radius_filter;
@@ -297,11 +298,16 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
         }
     }
 
+    //check for usage of voxel grid filtering to downsample point cloud
+    if(use_voxel_grid_filter)
+    {
+         downsampleCloud(current_cloud);
+    }
+
     //check for usage of radius filtering
     if(use_radius_filter)
     {
-        //we must downsample the cloud so the filter don't take too long
-        downsampleCloud(current_cloud);
+        //use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
         filterCloudRadiusBased(current_cloud);
     }
 
@@ -547,6 +553,14 @@ int main(int argc, char* argv[])
     };
     nh.param<int>("confidence_threshold", confidence_threshold, 150);
 
+    //check for usage of voxel grid filtering to downsample the point cloud
+    nh.param<bool>("use_voxel_grid_filter", use_voxel_grid_filter, false);
+    if (use_voxel_grid_filter)
+    {
+      // downsampling cloud parameters
+      nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
+    }
+
     // check for usage of radius filtering
     nh.param<bool>("use_radius_filter", use_radius_filter, false);
     if(use_radius_filter)
@@ -564,9 +578,6 @@ int main(int argc, char* argv[])
             ros_node_shutdown = true;
         };
         nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
-
-        // downsampling cloud parameters
-        nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
     };
 
     std::string depth_mode_str;
