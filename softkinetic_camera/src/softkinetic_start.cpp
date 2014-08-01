@@ -157,7 +157,6 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     //Create a sensor_msg::Image for ROS based on the new camera image
     //image.header.stamp.nsec = g_cFrames++*1000;
     image.header.stamp = ros::Time::now();
-    int count = 0;
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
@@ -258,9 +257,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     std::size_t data_size = depth_img_msg.width*depth_img_msg.height;
     depth_img_msg.data.resize(data_size*sizeof(float));
 
-    int cx = w/2;
-    int cy = h/2;
-
     Vertex p3DPoints[1];
     Point2D p2DPoints[1];
 
@@ -290,8 +286,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
             }
             p3DPoints[0] = data.vertices[count];
             g_pProjHelper->get2DCoordinates ( p3DPoints, p2DPoints, 1, CAMERA_PLANE_COLOR);
-            int x_pos = (int)p2DPoints[0].x;
-            int y_pos = (int)p2DPoints[0].y;
 
             *depth_img_ptr = data.depthMapFloatingPoint[count];
             ++depth_img_ptr;
