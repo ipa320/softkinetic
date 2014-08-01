@@ -12,7 +12,7 @@ The arguments given are the device indices of the cameras determined by the Dept
     <param name="use_radius_filter"     type="bool"      value="false" />
     <param name="search_radius"         type="double"    value="0.05"  />
     <param name="minNeighboursInRadius" type="int"       value="50"    />
-    <param name="depth_mode"            type="string"    value="long"  />  <!-- close or long -->
+    <param name="depth_mode"            type="string"    value="long"  /> <!-- close or long -->
     <param name="depth_frame_format"    type="string"    value="QQVGA" /> <!-- QQVGA -->
     <param name="depth_frame_rate"      type="int"       value="30"    /> <!-- 25, 30, 50, 60 -->
     <param name="color_compression"     type="string"    value="YUY2"  /> <!-- YUY2 -->
