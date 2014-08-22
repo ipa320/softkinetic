@@ -28,3 +28,16 @@ To download, you will need to create a free account
  Publishes rgb-images in bgr8 encoding.
 
 ...
+
+Add a camera to your robot model
+--------------------------------
+Here we explain how to import a softkinetic camera into your robot xacro file. We have only included a descriptor for the Creative Senz3D camera, but addapt it to any Softkinetic camera should be trivial. You just need to import the xacro file describing the camera macro:
+```
+  <xacro:include filename="$(find softkinetic_camera)/urdf/senz3d.urdf.xacro"/>
+```
+And include it somewhere in your robot description file, e.g.:
+```
+  <sensor_senz3d parent="base_link" name="senz3d_camera">
+    <origin xyz="0.05 0.0 0.3" rpy="0.0 0.0 0.0"/>
+  </sensor_senz3d>
+```
