@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+Demo launch file to run single softkinetic camera in stand alone (no other /tf) setup with Rviz
+The arguments given are the device indices of the cameras determined by the DepthSense deamon.
+-->
+<launch>
+
+    <include file="$(find softkinetic_camera)/launch/softkinetic_camera_ds311.launch" />
+
+    <node pkg="tf" type="static_transform_publisher" name="softkinect_tf"
+     args="0 0 0 0 0 1.2 /base /softkinetic_camera_link 40" />
+
+    <node pkg="rviz" type="rviz" name="softkinect_rviz" respawn="false"  required="true"
+     args="-d $(find softkinetic_camera)/launch/softkinetic.rviz"  />
+
+</launch>
