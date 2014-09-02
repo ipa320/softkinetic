@@ -465,7 +465,7 @@ void configureColorNode()
 /*----------------------------------------------------------------------------*/
 void configureNode(Node node)
 {
-  if ((node.is<DepthNode>())&&(!g_dnode.isSet())&&(_depth_enabled))
+    if ((node.is<DepthNode>())&&(!g_dnode.isSet())&&(_depth_enabled))
     {
         g_dnode = node.as<DepthNode>();
         configureDepthNode();
