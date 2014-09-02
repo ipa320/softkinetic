@@ -58,7 +58,7 @@
 #include <iomanip>
 #include <fstream>
 
-//ros include files
+// ros include files
 #include <ros/ros.h>
 #include <std_msgs/Int32.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -141,11 +141,13 @@ int minNeighboursInRadius;
 bool ros_node_shutdown = false;
 
 /* depth sensor parameters */
+bool depth_enabled;
 DepthSense::DepthNode::CameraMode depth_mode;
 DepthSense::FrameFormat depth_frame_format;
 int depth_frame_rate;
 
 /* color sensor parameters */
+bool color_enabled;
 DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
 int color_frame_rate;
@@ -561,14 +563,14 @@ void configureColorNode()
 /*----------------------------------------------------------------------------*/
 void configureNode(Node node)
 {
-  if ((node.is<DepthNode>()) && (!g_dnode.isSet()))
+  if ((node.is<DepthNode>()) && (!g_dnode.isSet()) && (depth_enabled))
   {
     g_dnode = node.as<DepthNode>();
     configureDepthNode();
     g_context.registerNode(node);
   }
 
-  if ((node.is<ColorNode>()) && (!g_cnode.isSet()))
+  if ((node.is<ColorNode>()) && (!g_cnode.isSet()) && (color_enabled))
   {
     g_cnode = node.as<ColorNode>();
     configureColorNode();
@@ -624,7 +626,6 @@ void sigintHandler(int sig)
   g_context.quit();
   ros::shutdown();
 }
-
 
 /*----------------------------------------------------------------------------*/
 int main(int argc, char* argv[])
@@ -721,6 +722,7 @@ int main(int argc, char* argv[])
   else
     depth_frame_format = FRAME_FORMAT_VGA;
 
+  nh.param<bool>("enable_depth", depth_enabled, true);
   nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
 
   std::string color_compression_str;
@@ -743,6 +745,7 @@ int main(int argc, char* argv[])
   else
     color_frame_format = FRAME_FORMAT_WXGA_H;
 
+  nh.param<bool>("enable_color", color_enabled, true);
   nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
   // initialize image transport object
