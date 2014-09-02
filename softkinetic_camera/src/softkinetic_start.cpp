@@ -123,10 +123,12 @@ int minNeighboursInRadius;
 /* shutdown request*/
 bool ros_node_shutdown = false;
 /* depth sensor parameters */
+bool _depth_enabled;
 DepthSense::DepthNode::CameraMode depth_mode;
 DepthSense::FrameFormat depth_frame_format;
 int depth_frame_rate;
 /* color sensor parameters */
+bool _color_enabled;
 DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
 int color_frame_rate;
@@ -463,14 +465,14 @@ void configureColorNode()
 /*----------------------------------------------------------------------------*/
 void configureNode(Node node)
 {
-    if ((node.is<DepthNode>())&&(!g_dnode.isSet()))
+  if ((node.is<DepthNode>())&&(!g_dnode.isSet())&&(_depth_enabled))
     {
         g_dnode = node.as<DepthNode>();
         configureDepthNode();
         g_context.registerNode(node);
     }
 
-    if ((node.is<ColorNode>())&&(!g_cnode.isSet()))
+    if ((node.is<ColorNode>())&&(!g_cnode.isSet())&&(_color_enabled))
     {
         g_cnode = node.as<ColorNode>();
         configureColorNode();
@@ -574,6 +576,7 @@ int main(int argc, char* argv[])
         nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
     };
 
+    nh.param<bool>("enable_depth", _depth_enabled, true);
     std::string depth_mode_str;
     nh.param<std::string>("depth_mode", depth_mode_str, "close");
     if ( depth_mode_str == "long" )
@@ -592,6 +595,7 @@ int main(int argc, char* argv[])
 
     nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
 
+    nh.param<bool>("enable_color", _color_enabled, true);
     std::string color_compression_str;
     nh.param<std::string>("color_compression", color_compression_str, "MJPEG");
     if ( color_compression_str == "YUY2" )

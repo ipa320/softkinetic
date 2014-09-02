@@ -4,6 +4,8 @@ Demo launch file to run single softkinetic camera in stand alone (no other /tf) 
 The arguments given are the device indices of the cameras determined by the DepthSense deamon.
 -->
 <launch>
+  <arg name="depth" default="true" />
+  <arg name="color" default="true" />
   <node name="softkinetic_camera" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="0" output="screen" >
     <param name="camera_link"           type="string"    value="base_rgbd_camera_link" />
     <param name="confidence_threshold"  type="int"       value="200"   />
@@ -18,10 +20,12 @@ The arguments given are the device indices of the cameras determined by the Dept
     <param name="search_radius"         type="double"    value="0.05"  />
     <param name="minNeighboursInRadius" type="int"       value="50"    />
 
+    <param name="enable_depth"          type="bool"      value="$(arg depth)"  />
     <param name="depth_mode"            type="string"    value="long"  /> <!-- close or long -->
     <param name="depth_frame_format"    type="string"    value="QQVGA" /> <!-- QQVGA -->
     <param name="depth_frame_rate"      type="int"       value="30"    /> <!-- 25, 30, 50, 60 -->
 
+    <param name="enable_color"          type="bool"      value="$(arg color)"  />
     <param name="color_compression"     type="string"    value="YUY2"  /> <!-- YUY2 -->
     <param name="color_frame_format"    type="string"    value="VGA"   /> <!-- VGA -->
     <param name="color_frame_rate"      type="int"       value="30"    /> <!-- 30 -->
