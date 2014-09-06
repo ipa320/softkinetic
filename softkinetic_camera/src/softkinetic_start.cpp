@@ -71,7 +71,6 @@
 #include <pcl/range_image/range_image.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
-//#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
@@ -79,6 +78,7 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include "camera_info_manager/camera_info_manager.h"
 
 #include <DepthSense.hxx>
 
@@ -104,8 +104,12 @@ StereoCameraParameters g_scp;
 
 ros::Publisher pub_cloud;
 image_transport::Publisher pub_rgb;
+image_transport::Publisher pub_mono;
+image_transport::Publisher pub_depth;
 
-sensor_msgs::Image image;
+sensor_msgs::Image img_rgb;
+sensor_msgs::Image img_mono;
+sensor_msgs::Image img_depth;
 std_msgs::Int32 test_int;
 sensor_msgs::PointCloud2 cloud;
 
@@ -113,6 +117,7 @@ int offset;
 /* confidence threshold for DepthNode configuration*/
 int confidence_threshold;
 /* parameters for downsampling cloud */
+bool use_voxel_grid_filter;
 double voxel_grid_side;
 /* parameters for radius filter */
 bool use_radius_filter;
@@ -120,6 +125,19 @@ double search_radius;
 int minNeighboursInRadius;
 /* shutdown request*/
 bool ros_node_shutdown = false;
+/* depth sensor parameters */
+DepthSense::DepthNode::CameraMode depth_mode;
+DepthSense::FrameFormat depth_frame_format;
+int depth_frame_rate;
+/* color sensor parameters */
+DepthSense::CompressionType color_compression;
+DepthSense::FrameFormat color_frame_format;
+int color_frame_rate;
+
+ros::Publisher pub_rgb_info;
+ros::Publisher pub_depth_info;
+sensor_msgs::CameraInfo rgb_info;
+sensor_msgs::CameraInfo depth_info;
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
@@ -133,40 +151,51 @@ void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 // New color sample event handler
 void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 {
-    ros::NodeHandle n_color("~");
-    std::string softkinetic_link;
-    if (n_color.getParam("/camera_link", softkinetic_link))
-    {
-        image.header.frame_id = softkinetic_link.c_str();
-    }
-    else
-    {
-        image.header.frame_id = "/softkinetic_link";
-    }
-    //Create a sensor_msg::Image for ROS based on the new camera image
-    //image.header.stamp.nsec = g_cFrames++*1000;
-    image.header.stamp = ros::Time::now();
+    //Create two sensor_msg::Image for color and grayscale images on new camera image
+    img_rgb.header.stamp = ros::Time::now();
+    img_mono.header.stamp = ros::Time::now();
     int count = 0;
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
-    image.width = w;///2;
-    image.height = h;///2;
-    image.encoding = "bgr8";
-    image.data.resize(w*h*3);
+    img_rgb.width = w;
+    img_rgb.height = h;
+    img_rgb.encoding = "bgr8";
+    img_rgb.data.resize(w*h*3);
+    img_rgb.step = w*3;
+
+    img_mono.width = w;
+    img_mono.height = h;
+    img_mono.encoding = "mono8";
+    img_mono.data.resize(w*h);
+    img_mono.step = w;
+
+    int count1 = w*h-1;
     int count2 = w*h*3-1;
 
-    for(int i = 0;i < w;i++){
-        for(int j = 0;j < h; j++){
-            image.data[count2]   = data.colorMap[count2];
-            image.data[count2+1] = data.colorMap[count2+1];
-            image.data[count2+2] = data.colorMap[count2+2];
+    for(int i = 0; i < w; i++){
+        for(int j = 0; j < h; j++){
+            img_mono.data[count1]  =
+                     (uint8_t)round((data.colorMap[count2]
+                                   + data.colorMap[count2+1]
+                                   + data.colorMap[count2+2])/3.0);
+            img_rgb.data[count2]   = data.colorMap[count2];
+            img_rgb.data[count2+1] = data.colorMap[count2+1];
+            img_rgb.data[count2+2] = data.colorMap[count2+2];
+
             count2-=3;
+            count1-=1;
         }
     }
 
     // Publish the rgb data
-    pub_rgb.publish(image);
+    pub_rgb.publish(img_rgb);
+    pub_mono.publish(img_mono);
+
+    rgb_info.header = img_rgb.header;
+    rgb_info.height = h;
+    rgb_info.width  = w;
+    pub_rgb_info.publish(rgb_info);
 
     g_cFrames++;
 }
@@ -207,9 +236,11 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
 
+    img_depth.header.stamp = ros::Time::now();
+
     int count = -1;
 
-    // Project some 3D points in the Color Frame
+    // Project some 3D points in the Color Frame   TODO useless; remove???
     if (!g_pProjHelper)
     {
         g_pProjHelper = new ProjectionHelper(data.stereoCameraParameters);
@@ -223,8 +254,14 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
-    int cx = w/2;
-    int cy = h/2;
+
+    img_depth.width = w;
+    img_depth.height = h;
+    img_depth.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+    img_depth.is_bigendian = 0;
+    img_depth.step = sizeof(float)*w;
+    std::size_t data_size = img_depth.width*img_depth.height;
+    img_depth.data.resize(data_size*sizeof(float));
 
     Vertex p3DPoints[1];
     Point2D p2DPoints[1];
@@ -238,9 +275,10 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     current_cloud->points.resize(w*h);
 
     uchar b, g, r;
+    float* depth_img_ptr = reinterpret_cast<float*>(&img_depth.data[0]);
 
-    for(int i = 1;i < h ;i++){
-        for(int j = 1;j < w ; j++){
+    for(int i = 0;i < h ;i++){
+        for(int j = 0;j < w ; j++){
             count++;
             current_cloud->points[count].x = -data.verticesFloatingPoint[count].x;
             current_cloud->points[count].y = data.verticesFloatingPoint[count].y;
@@ -250,8 +288,14 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
                 current_cloud->points[count].z = data.verticesFloatingPoint[count].z;
             }
 
+            // Saturated pixels on depthMapFloatingPoint have -1 value, but on openni are NaN
+            *depth_img_ptr =
+                data.depthMapFloatingPoint[count] < 0.0 ? std::numeric_limits<float>::quiet_NaN()
+              : data.depthMapFloatingPoint[count];
+            ++depth_img_ptr;
+
             //get mapping between depth map and color map, assuming we have a RGB image
-            if(image.data.size() == 0){
+            if(img_rgb.data.size() == 0){
                 ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
                 continue;
             }
@@ -260,14 +304,14 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
             int x_pos = (int)p2DPoints[0].x;
             int y_pos = (int)p2DPoints[0].y;
 
-            if(y_pos < 0 || y_pos > image.height || x_pos < 0 || x_pos > image.width){
+            if(y_pos < 0 || y_pos > img_rgb.height || x_pos < 0 || x_pos > img_rgb.width){
                 b = 0;
                 g = 0;
                 r = 0;
             }else{
-                b = image.data[(y_pos*image.width+x_pos)*3+0];
-                g = image.data[(y_pos*image.width+x_pos)*3+1];
-                r = image.data[(y_pos*image.width+x_pos)*3+2];
+                b = img_rgb.data[(y_pos*img_rgb.width+x_pos)*3+0];
+                g = img_rgb.data[(y_pos*img_rgb.width+x_pos)*3+1];
+                r = img_rgb.data[(y_pos*img_rgb.width+x_pos)*3+2];
             }
             current_cloud->points[count].b = b;
             current_cloud->points[count].g = g;
@@ -275,18 +319,68 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
         }
     }
 
+    //check for usage of voxel grid filtering to downsample point cloud
+    if(use_voxel_grid_filter)
+    {
+         downsampleCloud(current_cloud);
+    }
+
     //check for usage of radius filtering
     if(use_radius_filter)
     {
-        //we must downsample the cloud so the filter don't take too long
-        downsampleCloud(current_cloud);
+        //use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
         filterCloudRadiusBased(current_cloud);
     }
 
     //convert current_cloud to PointCloud2 and publish
     pcl::toROSMsg(*current_cloud, cloud);
 
+    // Fill depth camera info with the parameters provided by the camera
+    depth_info.header = img_depth.header;
+    depth_info.distortion_model = "plumb_bob";
+    depth_info.height = data.stereoCameraParameters.depthIntrinsics.height;
+    depth_info.width  = data.stereoCameraParameters.depthIntrinsics.width;
+
+    // Distortion parameters D = [k1, k2, t1, t2, k3]
+    depth_info.D[0] = data.stereoCameraParameters.depthIntrinsics.k1;
+    depth_info.D[1] = data.stereoCameraParameters.depthIntrinsics.k2;
+    depth_info.D[2] = data.stereoCameraParameters.depthIntrinsics.p1;
+    depth_info.D[3] = data.stereoCameraParameters.depthIntrinsics.p2;
+    depth_info.D[4] = data.stereoCameraParameters.depthIntrinsics.k3;
+
+    // Intrinsic camera matrix for the raw (distorted) images:
+    //     [fx  0 cx]
+    // K = [ 0 fy cy]
+    //     [ 0  0  1]
+    depth_info.K[0] = data.stereoCameraParameters.depthIntrinsics.fx;
+    depth_info.K[2] = data.stereoCameraParameters.depthIntrinsics.cx;
+    depth_info.K[4] = data.stereoCameraParameters.depthIntrinsics.fy;
+    depth_info.K[5] = data.stereoCameraParameters.depthIntrinsics.cy;
+    depth_info.K[8] = 1.0;
+
+    // Rectification matrix (stereo cameras only)
+    //     [1 0 0]
+    // R = [0 1 0]
+    //     [0 0 1]
+    depth_info.R[0] = 1.0;
+    depth_info.R[4] = 1.0;
+    depth_info.R[8] = 1.0;
+
+    // Projection/camera matrix; we use the same values as in the raw image, as we are not
+    // applying any correction (WARN: is this ok?). For monocular cameras, Tx = Ty = 0.
+    //     [fx'  0  cx' Tx]
+    // P = [ 0  fy' cy' Ty]
+    //     [ 0   0   1   0]
+    depth_info.P[0] = data.stereoCameraParameters.depthIntrinsics.fx;
+    depth_info.P[2] = data.stereoCameraParameters.depthIntrinsics.cx;
+    depth_info.P[5] = data.stereoCameraParameters.depthIntrinsics.fy;
+    depth_info.P[6] = data.stereoCameraParameters.depthIntrinsics.cy;
+    depth_info.P[10] = 1.0;
+
     pub_cloud.publish (cloud);
+    pub_depth.publish (img_depth);
+    pub_depth_info.publish (depth_info);
+
     g_context.quit();
 }
 
@@ -334,9 +428,10 @@ void configureDepthNode()
     g_dnode.newSampleReceivedEvent().connect(&onNewDepthSample);
 
     DepthNode::Configuration config = g_dnode.getConfiguration();
-    config.frameFormat = FRAME_FORMAT_QVGA;
-    config.framerate = 25;
-    config.mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+
+    config.frameFormat = depth_frame_format;
+    config.framerate = depth_frame_rate;
+    config.mode = depth_mode;
     config.saturation = true;
 
     g_context.requestControl(g_dnode,0);
@@ -391,10 +486,11 @@ void configureColorNode()
     g_cnode.newSampleReceivedEvent().connect(&onNewColorSample);
 
     ColorNode::Configuration config = g_cnode.getConfiguration();
-    config.frameFormat = FRAME_FORMAT_WXGA_H;
-    config.compression = COMPRESSION_TYPE_MJPEG;
+
+    config.frameFormat = color_frame_format;
+    config.compression = color_compression;
     config.powerLineFrequency = POWER_LINE_FREQUENCY_50HZ;
-    config.framerate = 25;
+    config.framerate = color_frame_rate;
 
     g_cnode.setEnableColorMap(true);
 
@@ -513,6 +609,28 @@ int main(int argc, char* argv[])
     nh.param<std::string>("camera_link", softkinetic_link, "softkinetic_link");
     cloud.header.frame_id = softkinetic_link;
 
+    //fill in the rgb and depth images message header frame id
+    std::string optical_frame;
+    if (nh.getParam("rgb_optical_frame", optical_frame))
+    {
+        img_rgb.header.frame_id = optical_frame.c_str();
+        img_mono.header.frame_id = optical_frame.c_str();
+    }
+    else
+    {
+        img_rgb.header.frame_id = "/softkinetic_rgb_optical_frame";
+        img_mono.header.frame_id = "/softkinetic_rgb_optical_frame";
+    }
+
+    if (nh.getParam("depth_optical_frame", optical_frame))
+    {
+        img_depth.header.frame_id = optical_frame.c_str();
+    }
+    else
+    {
+        img_depth.header.frame_id = "/softkinetic_depth_optical_frame";
+    }
+
     // get confidence threshold from parameter server
     if(!nh.hasParam("confidence_threshold"))
     {
@@ -520,6 +638,14 @@ int main(int argc, char* argv[])
         ros_node_shutdown = true;
     };
     nh.param<int>("confidence_threshold", confidence_threshold, 150);
+
+    //check for usage of voxel grid filtering to downsample the point cloud
+    nh.param<bool>("use_voxel_grid_filter", use_voxel_grid_filter, false);
+    if (use_voxel_grid_filter)
+    {
+      // downsampling cloud parameters
+      nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
+    }
 
     // check for usage of radius filtering
     nh.param<bool>("use_radius_filter", use_radius_filter, false);
@@ -538,10 +664,47 @@ int main(int argc, char* argv[])
             ros_node_shutdown = true;
         };
         nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
-
-        // downsampling cloud parameters
-        nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
     };
+
+    std::string depth_mode_str;
+    nh.param<std::string>("depth_mode", depth_mode_str, "close");
+    if ( depth_mode_str == "long" )
+      depth_mode = DepthNode::CAMERA_MODE_LONG_RANGE;
+    else
+      depth_mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+
+    std::string depth_frame_format_str;
+    nh.param<std::string>("depth_frame_format", depth_frame_format_str, "QVGA");
+    if ( depth_frame_format_str == "QQVGA" )
+      depth_frame_format = FRAME_FORMAT_QQVGA;
+    else if ( depth_frame_format_str == "QVGA" )
+      depth_frame_format = FRAME_FORMAT_QVGA;
+    else
+      depth_frame_format = FRAME_FORMAT_VGA;
+
+    nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
+
+    std::string color_compression_str;
+    nh.param<std::string>("color_compression", color_compression_str, "MJPEG");
+    if ( color_compression_str == "YUY2" )
+      color_compression = COMPRESSION_TYPE_YUY2;
+    else
+      color_compression = COMPRESSION_TYPE_MJPEG;
+
+    std::string color_frame_format_str;
+    nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
+    if ( color_frame_format_str == "QQVGA" )
+      color_frame_format = FRAME_FORMAT_QQVGA;
+    else if ( color_frame_format_str == "QVGA" )
+      color_frame_format = FRAME_FORMAT_QVGA;
+    else if ( color_frame_format_str == "VGA" )
+      color_frame_format = FRAME_FORMAT_VGA;
+    else if ( color_frame_format_str == "NHD" )
+      color_frame_format = FRAME_FORMAT_NHD;
+    else
+      color_frame_format = FRAME_FORMAT_WXGA_H;
+
+    nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
     offset = ros::Time::now().toSec();
     //initialize image transport object
@@ -549,7 +712,26 @@ int main(int argc, char* argv[])
 
     //initialize publishers
     pub_cloud = nh.advertise<sensor_msgs::PointCloud2> ("depth_registered/points", 1);
-    pub_rgb = it.advertise ("rgb_data", 1);
+    pub_rgb = it.advertise ("rgb/image_color", 1);
+    pub_mono = it.advertise ("rgb/image_mono", 1);
+    pub_depth = it.advertise ("depth_registered/image", 1);
+    pub_depth_info = nh.advertise<sensor_msgs::CameraInfo>("depth_registered/camera_info", 1);
+    pub_rgb_info = nh.advertise<sensor_msgs::CameraInfo>("rgb/camera_info", 1);
+
+    std::string calibration_file;
+    if (nh.getParam("calibration_file", calibration_file))
+    {
+        camera_info_manager::CameraInfoManager camera_info_manager(nh,"senz3d","file://" + calibration_file);
+        rgb_info = camera_info_manager.getCameraInfo();
+    }
+    else
+    {
+        camera_info_manager::CameraInfoManager camera_info_manager(nh,"senz3d");
+        rgb_info = camera_info_manager.getCameraInfo();
+    }
+    camera_info_manager::CameraInfoManager camera_info_manager(nh,"senz3d");
+    depth_info = camera_info_manager.getCameraInfo();
+    depth_info.D.resize(5);
 
     g_context = Context::create("softkinetic");
 
