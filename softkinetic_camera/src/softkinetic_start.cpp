@@ -328,8 +328,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     pub_cloud.publish (cloud);
     pub_depth.publish (depth_img_msg);
-
-    g_context.quit();
 }
 
 /*----------------------------------------------------------------------------*/
