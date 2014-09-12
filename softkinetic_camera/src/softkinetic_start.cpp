@@ -103,7 +103,6 @@ uint32_t g_dFrames = 0;
 bool g_bDeviceFound = false;
 
 ProjectionHelper* g_pProjHelper = NULL;
-StereoCameraParameters g_scp;
 
 ros::Publisher pub_cloud;
 ros::Publisher pub_rgb_info;
@@ -184,10 +183,6 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     img_mono.data.resize(w * h);
     img_mono.step = w;
 
-    rgb_info.width  = w;
-    rgb_info.height = h;
-    rgb_info.header = img_rgb.header;
-
     cv_img_rgb.create(h, w, CV_8UC3);
   }
 
@@ -208,9 +203,9 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     }
   }
 
-  img_rgb.header.stamp  = ros::Time::now();
-  img_mono.header.stamp = ros::Time::now();
-  rgb_info.header.stamp = ros::Time::now();
+  img_rgb.header.stamp = ros::Time::now();
+  img_mono.header      = img_rgb.header;
+  rgb_info.header      = img_rgb.header;
 
   // Publish the rgb and mono images and camera info
   pub_rgb.publish(img_rgb);
@@ -251,22 +246,58 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
   cloud.header.stamp = ros::Time::now();
 }
 
+void setupCameraInfo(const DepthSense::IntrinsicParameters& params, sensor_msgs::CameraInfo& cam_info)
+{
+  depth_info.distortion_model = "plumb_bob";
+  depth_info.height = params.height;
+  depth_info.width  = params.width;
+
+  // Distortion parameters D = [k1, k2, t1, t2, k3]
+  depth_info.D.resize(5);
+  depth_info.D[0] = params.k1;
+  depth_info.D[1] = params.k2;
+  depth_info.D[2] = params.p1;
+  depth_info.D[3] = params.p2;
+  depth_info.D[4] = params.k3;
+
+  // Intrinsic camera matrix for the raw (distorted) images:
+  //     [fx  0 cx]
+  // K = [ 0 fy cy]
+  //     [ 0  0  1]
+  depth_info.K[0] = params.fx;
+  depth_info.K[2] = params.cx;
+  depth_info.K[4] = params.fy;
+  depth_info.K[5] = params.cy;
+  depth_info.K[8] = 1.0;
+
+  // Rectification matrix (stereo cameras only)
+  //     [1 0 0]
+  // R = [0 1 0]
+  //     [0 0 1]
+  depth_info.R[0] = 1.0;
+  depth_info.R[4] = 1.0;
+  depth_info.R[8] = 1.0;
+
+  // Projection/camera matrix; we use the same values as in the raw image, as we are not
+  // applying any correction (WARN: is this ok?). For monocular cameras, Tx = Ty = 0.
+  //     [fx'  0  cx' Tx]
+  // P = [ 0  fy' cy' Ty]
+  //     [ 0   0   1   0]
+  depth_info.P[0] = params.fx;
+  depth_info.P[2] = params.cx;
+  depth_info.P[5] = params.fy;
+  depth_info.P[6] = params.cy;
+  depth_info.P[10] = 1.0;
+}
+
 // New depth sample event varsace tieshandler
 void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
   if (img_depth.data.size() == 0)
   {
-    // Project some 3D points in the Color Frame   TODO useless; remove???
+    // Project some 3D points in the Color Frame
     if (!g_pProjHelper)
-    {
       g_pProjHelper = new ProjectionHelper(data.stereoCameraParameters);
-      g_scp = data.stereoCameraParameters;
-    }
-    else if (g_scp != data.stereoCameraParameters)
-    {
-      g_pProjHelper->setStereoCameraParameters(data.stereoCameraParameters);
-      g_scp = data.stereoCameraParameters;
-    }
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat, &w, &h);
@@ -279,49 +310,21 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     std::size_t data_size = img_depth.width * img_depth.height;
     img_depth.data.resize(data_size * sizeof(float));
 
-    // Fill depth camera info with the parameters provided by the camera
-    depth_info.header = img_depth.header;
-    depth_info.distortion_model = "plumb_bob";
-    depth_info.height = data.stereoCameraParameters.depthIntrinsics.height;
-    depth_info.width = data.stereoCameraParameters.depthIntrinsics.width;
-
-    // Distortion parameters D = [k1, k2, t1, t2, k3]
-    depth_info.D[0] = data.stereoCameraParameters.depthIntrinsics.k1;
-    depth_info.D[1] = data.stereoCameraParameters.depthIntrinsics.k2;
-    depth_info.D[2] = data.stereoCameraParameters.depthIntrinsics.p1;
-    depth_info.D[3] = data.stereoCameraParameters.depthIntrinsics.p2;
-    depth_info.D[4] = data.stereoCameraParameters.depthIntrinsics.k3;
-
-    // Intrinsic camera matrix for the raw (distorted) images:
-    //     [fx  0 cx]
-    // K = [ 0 fy cy]
-    //     [ 0  0  1]
-    depth_info.K[0] = data.stereoCameraParameters.depthIntrinsics.fx;
-    depth_info.K[2] = data.stereoCameraParameters.depthIntrinsics.cx;
-    depth_info.K[4] = data.stereoCameraParameters.depthIntrinsics.fy;
-    depth_info.K[5] = data.stereoCameraParameters.depthIntrinsics.cy;
-    depth_info.K[8] = 1.0;
-
-    // Rectification matrix (stereo cameras only)
-    //     [1 0 0]
-    // R = [0 1 0]
-    //     [0 0 1]
-    depth_info.R[0] = 1.0;
-    depth_info.R[4] = 1.0;
-    depth_info.R[8] = 1.0;
-
-    // Projection/camera matrix; we use the same values as in the raw image, as we are not
-    // applying any correction (WARN: is this ok?). For monocular cameras, Tx = Ty = 0.
-    //     [fx'  0  cx' Tx]
-    // P = [ 0  fy' cy' Ty]
-    //     [ 0   0   1   0]
-    depth_info.P[0] = data.stereoCameraParameters.depthIntrinsics.fx;
-    depth_info.P[2] = data.stereoCameraParameters.depthIntrinsics.cx;
-    depth_info.P[5] = data.stereoCameraParameters.depthIntrinsics.fy;
-    depth_info.P[6] = data.stereoCameraParameters.depthIntrinsics.cy;
-    depth_info.P[10] = 1.0;
-
     cv_img_depth.create(h, w, CV_32FC1); // unused by now; not sure if I can use it to improve speed
+
+    if (rgb_info.D.size() == 0)
+    {
+      // User didn't provide a calibration file for the color camera, so
+      // fill camera info with the parameters provided by the camera itself
+      setupCameraInfo(data.stereoCameraParameters.colorIntrinsics, rgb_info);
+    }
+
+    if (depth_info.D.size() == 0)
+    {
+      // User didn't provide a calibration file for the depth camera, so
+      // fill camera info with the parameters provided by the camera itself
+      setupCameraInfo(data.stereoCameraParameters.depthIntrinsics, depth_info);
+    }
   }
 
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
@@ -330,8 +333,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   current_cloud->width  = img_depth.width;
   current_cloud->is_dense = false;
   current_cloud->points.resize(img_depth.width * img_depth.height);
-
-  img_depth.header.stamp = ros::Time::now();
 
   g_dFrames++;
 
@@ -404,6 +405,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
   // convert current_cloud to PointCloud2 and publish
   pcl::toROSMsg(*current_cloud, cloud);
+
+  img_depth.header.stamp = ros::Time::now();
+  depth_info.header      = img_depth.header;
 
   pub_cloud.publish(cloud);
   pub_depth.publish(img_depth);
@@ -673,7 +677,7 @@ int main(int argc, char* argv[])
   }
   nh.param<int>("confidence_threshold", confidence_threshold, 150);
 
-  //check for usage of voxel grid filtering to downsample the point cloud
+  // check for usage of voxel grid filtering to downsample the point cloud
   nh.param<bool>("use_voxel_grid_filter", use_voxel_grid_filter, false);
   if (use_voxel_grid_filter)
   {
@@ -753,20 +757,17 @@ int main(int argc, char* argv[])
   pub_rgb_info = nh.advertise<sensor_msgs::CameraInfo>("rgb/camera_info", 1);
 
   std::string calibration_file;
-  if (nh.getParam("calibration_file", calibration_file))
+  if (nh.getParam("rgb_calibration_file", calibration_file))
   {
     camera_info_manager::CameraInfoManager camera_info_manager(nh, "senz3d", "file://" + calibration_file);
     rgb_info = camera_info_manager.getCameraInfo();
   }
-  else
+
+  if (nh.getParam("depth_calibration_file", calibration_file))
   {
-    // TODO: fill with parameters provided by the camera
-    camera_info_manager::CameraInfoManager camera_info_manager(nh, "senz3d");
-    rgb_info = camera_info_manager.getCameraInfo();
+    camera_info_manager::CameraInfoManager camera_info_manager(nh, "senz3d", "file://" + calibration_file);
+    depth_info = camera_info_manager.getCameraInfo();
   }
-  camera_info_manager::CameraInfoManager camera_info_manager(nh, "senz3d");
-  depth_info = camera_info_manager.getCameraInfo();
-  depth_info.D.resize(5);
 
   g_context = Context::create("softkinetic");
 
@@ -803,7 +804,7 @@ int main(int argc, char* argv[])
     for (int n = 0; n < (int)na.size(); n++)
       configureNode(na[n]);
   }
-  //loop while ros core is operational or Ctrl-C is used
+  // Loop while ros core is operational or Ctrl-C is used
   if (ros_node_shutdown)
   {
     ros::shutdown();
@@ -813,7 +814,7 @@ int main(int argc, char* argv[])
     g_context.startNodes();
     g_context.run();
   }
-  //Close out all nodes
+  // Close out all nodes
   if (g_cnode.isSet())
     g_context.unregisterNode(g_cnode);
   if (g_dnode.isSet())
