@@ -135,7 +135,7 @@ double voxel_grid_side;
 /* parameters for radius filter */
 bool use_radius_filter;
 double search_radius;
-int minNeighboursInRadius;
+int min_neighbours;
 
 /* shutdown request*/
 bool ros_node_shutdown = false;
@@ -236,7 +236,7 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
   pcl::RadiusOutlierRemoval < pcl::PointXYZRGB > ror;
   ror.setInputCloud(cloud_to_filter);
   ror.setRadiusSearch(search_radius);
-  ror.setMinNeighborsInRadius(minNeighboursInRadius);
+  ror.setMinNeighborsInRadius(min_neighbours);
   // apply filter
   ROS_DEBUG_STREAM("Starting filtering");
   int before = cloud_to_filter->size();
@@ -697,13 +697,13 @@ int main(int argc, char* argv[])
     }
     nh.param<double>("search_radius", search_radius, 0.5);
 
-    if (!nh.hasParam("minNeighboursInRadius"))
+    if (!nh.hasParam("min_neighbours"))
     {
       ROS_ERROR_STREAM(
-          "For " << ros::this_node::getName() << ", parameter 'minNeighboursInRadius' is not set on server.");
+          "For " << ros::this_node::getName() << ", parameter 'min_neighbours' is not set on server.");
       ros_node_shutdown = true;
     }
-    nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
+    nh.param<int>("min_neighbours", min_neighbours, 0);
   }
 
   std::string depth_mode_str;
