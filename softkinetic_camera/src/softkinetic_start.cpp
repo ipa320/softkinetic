@@ -58,7 +58,7 @@
 #include <iomanip>
 #include <fstream>
 
-// ros include files
+// ROS include files
 #include <ros/ros.h>
 #include <std_msgs/Int32.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -119,34 +119,35 @@ sensor_msgs::Image img_mono;
 sensor_msgs::Image img_depth;
 sensor_msgs::PointCloud2 cloud;
 
-cv::Mat cv_img_rgb; //CV image containers
+cv::Mat cv_img_rgb; // Open CV image containers
+cv::Mat cv_img_yuy2;
 cv::Mat cv_img_mono;
 cv::Mat cv_img_depth;
 
 std_msgs::Int32 test_int;
 
-/* confidence threshold for DepthNode configuration*/
+/* Confidence threshold for DepthNode configuration */
 int confidence_threshold;
 
-/* parameters for downsampling cloud */
+/* Parameters for downsampling cloud */
 bool use_voxel_grid_filter;
 double voxel_grid_side;
 
-/* parameters for radius filter */
+/* Parameters for radius filter */
 bool use_radius_filter;
 double search_radius;
 int min_neighbours;
 
-/* shutdown request*/
+/* Shutdown request*/
 bool ros_node_shutdown = false;
 
-/* depth sensor parameters */
+/* Depth sensor parameters */
 bool depth_enabled;
 DepthSense::DepthNode::CameraMode depth_mode;
 DepthSense::FrameFormat depth_frame_format;
 int depth_frame_rate;
 
-/* color sensor parameters */
+/* Color sensor parameters */
 bool color_enabled;
 DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
@@ -186,11 +187,26 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     img_mono.step = w;
 
     cv_img_rgb.create(h, w, CV_8UC3);
+    if (color_compression == COMPRESSION_TYPE_YUY2)
+      cv_img_yuy2.create(h, w, CV_8UC2);
   }
 
-  cv_img_rgb.data = (uchar *)(const uint8_t *)data.colorMap;
-  cvtColor(cv_img_rgb, cv_img_mono, CV_RGB2GRAY);
+  if (color_compression == COMPRESSION_TYPE_YUY2)
+  {
+    // Color images come compressed as YUY2, so we must convert them to BGR
+    cv_img_yuy2.data = (uchar *)(const uint8_t *)data.colorMap;
+    cvtColor(cv_img_yuy2, cv_img_rgb, CV_YUV2BGR_YUY2);
+  }
+  else
+  {
+    // Nothing special to do for MJPEG stream; just cast and reuse the camera data
+    cv_img_rgb.data = (uchar *)(const uint8_t *)data.colorMap;
+  }
+  // Create also a gray-scale image from the BGR one
+  cvtColor(cv_img_rgb, cv_img_mono, CV_BGR2GRAY);
 
+  // Dump both on ROS image messages; I tried to memcopy to improve speed but failed to
+  // read from the DepthSense::Pointer. But accessing OpenCV images is quite fast, anyway
   for (int i = 0; i < img_rgb.height; i++)
   {
     for (int j = 0; j < img_rgb.width; j++)
@@ -205,6 +221,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     }
   }
 
+  // Ensure that all the images and camera info are timestamped and have the proper frame id
   img_rgb.header.stamp = ros::Time::now();
   img_mono.header      = img_rgb.header;
   rgb_info.header      = img_rgb.header;
@@ -232,7 +249,7 @@ void downsampleCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
 
 void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
 {
-  // radius based filter:
+  // Radius based filter:
   pcl::RadiusOutlierRemoval < pcl::PointXYZRGB > ror;
   ror.setInputCloud(cloud_to_filter);
   ror.setRadiusSearch(search_radius);
@@ -366,7 +383,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
           data.depthMapFloatingPoint[count];
       ++depth_img_ptr;
 
-      // get mapping between depth map and color map, assuming we have a RGB image
+      // Get mapping between depth map and color map, assuming we have a RGB image
       if (img_rgb.data.size() == 0)
       {
         ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
@@ -379,6 +396,8 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
       if (y_pos < 0 || y_pos > img_rgb.height || x_pos < 0 || x_pos > img_rgb.width)
       {
+        // Out of bounds: depth fov is significantly wider than color one,
+        // so there are black points in the borders of the pointcloud
         current_cloud->points[count].b = 0;
         current_cloud->points[count].g = 0;
         current_cloud->points[count].r = 0;
@@ -392,20 +411,20 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     }
   }
 
-  // check for usage of voxel grid filtering to downsample point cloud
+  // Check for usage of voxel grid filtering to downsample point cloud
   if (use_voxel_grid_filter)
   {
     downsampleCloud(current_cloud);
   }
 
-  // check for usage of radius filtering
+  // Check for usage of radius filtering
   if (use_radius_filter)
   {
     // use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
     filterCloudRadiusBased(current_cloud);
   }
 
-  // convert current_cloud to PointCloud2 and publish
+  // Convert current_cloud to PointCloud2 and publish
   pcl::toROSMsg(*current_cloud, cloud);
 
   img_depth.header.stamp = ros::Time::now();
@@ -512,7 +531,7 @@ void configureDepthNode()
 /*----------------------------------------------------------------------------*/
 void configureColorNode()
 {
-  // connect new color sample handler
+  // Connect new color sample handler
   g_cnode.newSampleReceivedEvent().connect(&onNewColorSample);
 
   ColorNode::Configuration config = g_cnode.getConfiguration();
@@ -630,14 +649,14 @@ void sigintHandler(int sig)
 /*----------------------------------------------------------------------------*/
 int main(int argc, char* argv[])
 {
-  // initialize ros
+  // Initialize ROS
   ros::init(argc, argv, "softkinetic_bringup_node");
   ros::NodeHandle nh("~");
 
   // Override the default ROS SIGINT handler to call g_context.quit() and avoid escalating to SIGTERM
   signal(SIGINT, sigintHandler);
 
-  // get frame id from parameter server
+  // Get frame id from parameter server
   std::string softkinetic_link;
   if (!nh.hasParam("camera_link"))
   {
@@ -648,7 +667,7 @@ int main(int argc, char* argv[])
   nh.param<std::string>("camera_link", softkinetic_link, "softkinetic_link");
   cloud.header.frame_id = softkinetic_link;
 
-  //fill in the rgb and depth images message header frame id
+  // Fill in the color and depth images message header frame id
   std::string optical_frame;
   if (nh.getParam("rgb_optical_frame", optical_frame))
   {
@@ -670,7 +689,7 @@ int main(int argc, char* argv[])
     img_depth.header.frame_id = "/softkinetic_depth_optical_frame";
   }
 
-  // get confidence threshold from parameter server
+  // Get confidence threshold from parameter server
   if (!nh.hasParam("confidence_threshold"))
   {
     ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'confidence_threshold' is not set on server.");
@@ -678,15 +697,15 @@ int main(int argc, char* argv[])
   }
   nh.param<int>("confidence_threshold", confidence_threshold, 150);
 
-  // check for usage of voxel grid filtering to downsample the point cloud
+  // Check for usage of voxel grid filtering to downsample the point cloud
   nh.param<bool>("use_voxel_grid_filter", use_voxel_grid_filter, false);
   if (use_voxel_grid_filter)
   {
-    // downsampling cloud parameters
+    // Downsampling cloud parameters
     nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
   }
 
-  // check for usage of radius filtering
+  // Check for usage of radius filtering
   nh.param<bool>("use_radius_filter", use_radius_filter, false);
   if (use_radius_filter)
   {
@@ -748,10 +767,10 @@ int main(int argc, char* argv[])
   nh.param<bool>("enable_color", color_enabled, true);
   nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
-  // initialize image transport object
+  // Initialize image transport object
   image_transport::ImageTransport it(nh);
 
-  // initialize publishers
+  // Initialize publishers
   pub_cloud = nh.advertise<sensor_msgs::PointCloud2>("depth/points", 1);
   pub_rgb = it.advertise("rgb/image_color", 1);
   pub_mono = it.advertise("rgb/image_mono", 1);
@@ -791,7 +810,7 @@ int main(int argc, char* argv[])
 
   if (da.size() >= 1)
   {
-    // if camera index comes as argument, device_index will be updated
+    // If camera index comes as argument, device_index will be updated
     if (argc > 1)
     {
       device_index = atoi(argv[1]);
