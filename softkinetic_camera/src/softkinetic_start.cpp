@@ -71,6 +71,7 @@
 #include <pcl/range_image/range_image.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/passthrough.h>
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
@@ -120,6 +121,10 @@ double voxel_grid_side;
 bool use_radius_filter;
 double search_radius;
 int minNeighboursInRadius;
+/* parameters for passthrough filer */
+bool use_passthrough_filter;
+double limit_min;
+double limit_max;
 /* shutdown request*/
 bool ros_node_shutdown = false;
 /* depth sensor parameters */
@@ -207,6 +212,25 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
     int before = cloud_to_filter->size();
     double old_ = ros::Time::now().toSec();
     ror.filter(*cloud_to_filter);
+    double new_= ros::Time::now().toSec() - old_;
+    int after = cloud_to_filter->size();
+    ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+                  << "points reduced from " << before << " to " << after);
+    cloud.header.stamp = ros::Time::now();
+}
+
+void filterPassThrough(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
+{
+    // passthrough filter:
+    pcl::PassThrough<pcl::PointXYZRGB> pt;
+    pt.setInputCloud(cloud_to_filter);
+    pt.setFilterFieldName("z");
+    pt.setFilterLimits(limit_min, limit_max);
+    // apply filter
+    ROS_DEBUG_STREAM("Starting filtering");
+    int before = cloud_to_filter->size();
+    double old_ = ros::Time::now().toSec();
+    pt.filter(*cloud_to_filter);
     double new_= ros::Time::now().toSec() - old_;
     int after = cloud_to_filter->size();
     ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
@@ -305,6 +329,12 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     {
         //use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
         filterCloudRadiusBased(current_cloud);
+    }
+
+    //check for usage of passthrough filtering
+    if(use_passthrough_filter)
+    {
+        filterPassThrough(current_cloud);
     }
 
     //convert current_cloud to PointCloud2 and publish
@@ -575,6 +605,25 @@ int main(int argc, char* argv[])
         };
         nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
     };
+
+    // check for usage of passthrough filtering
+    nh.param<bool>("use_passthrough_filter", use_passthrough_filter, false);
+    if(use_passthrough_filter)
+    {
+        if(!nh.hasParam("limit_min"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'limit_min' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("limit_min", limit_min, 0.0);
+
+        if(!nh.hasParam("limit_max"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'limit_max' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("limit_max", limit_max, 0.0);
+    }
 
     nh.param<bool>("enable_depth", _depth_enabled, true);
     std::string depth_mode_str;
