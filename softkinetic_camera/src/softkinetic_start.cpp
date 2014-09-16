@@ -194,13 +194,15 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
   if (color_compression == COMPRESSION_TYPE_YUY2)
   {
     // Color images come compressed as YUY2, so we must convert them to BGR
-    cv_img_yuy2.data = (uchar *)(const uint8_t *)data.colorMap;
+    cv_img_yuy2.data = reinterpret_cast<uchar *>(
+          const_cast<uint8_t *>(static_cast<const uint8_t *>(data.colorMap)));
     cvtColor(cv_img_yuy2, cv_img_rgb, CV_YUV2BGR_YUY2);
   }
   else
   {
-    // Nothing special to do for MJPEG stream; just cast and reuse the camera data
-    cv_img_rgb.data = (uchar *)(const uint8_t *)data.colorMap;
+    // Nothing special to do for MJPEG stream; just cast and reuse the camera data    
+    cv_img_rgb.data = reinterpret_cast<uchar *>(
+          const_cast<uint8_t *>(static_cast<const uint8_t *>(data.colorMap)));
   }
   // Create also a gray-scale image from the BGR one
   cvtColor(cv_img_rgb, cv_img_mono, CV_BGR2GRAY);
