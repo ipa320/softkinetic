@@ -120,11 +120,11 @@ int offset;
 int confidence_threshold;
 /* parameters for downsampling cloud */
 bool use_voxel_grid_filter;
-double voxel_grid_side;
+double voxel_grid_size;
 /* parameters for radius filter */
 bool use_radius_filter;
 double search_radius;
-int minNeighboursInRadius;
+int min_neighbours;
 /* parameters for passthrough filer */
 bool use_passthrough_filter;
 double limit_min;
@@ -238,7 +238,7 @@ void downsampleCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
     ROS_DEBUG_STREAM("Starting downsampling");
     pcl::VoxelGrid<pcl::PointXYZRGB> sor;
     sor.setInputCloud (cloud_to_filter);
-    sor.setLeafSize (voxel_grid_side, voxel_grid_side, voxel_grid_side);
+    sor.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
     sor.filter (*cloud_to_filter);
     ROS_DEBUG_STREAM("downsampled!");
 }
@@ -249,7 +249,7 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
     pcl::RadiusOutlierRemoval<pcl::PointXYZRGB> ror;
     ror.setInputCloud(cloud_to_filter);
     ror.setRadiusSearch(search_radius);
-    ror.setMinNeighborsInRadius(minNeighboursInRadius);
+    ror.setMinNeighborsInRadius(min_neighbours);
     // apply filter
     ROS_DEBUG_STREAM("Starting filtering");
     int before = cloud_to_filter->size();
@@ -603,16 +603,16 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
 
     confidence_threshold = config.confidence_threshold;
 
-    use_voxel_grid_filter = config.voxel_grid_filter_enable;
-    voxel_grid_side       = config.voxel_grid_filter_side;
+    use_voxel_grid_filter = config.use_voxel_grid_filter;
+    voxel_grid_size       = config.voxel_grid_size;
 
-    use_radius_filter     = config.radius_filter_enable;
-    search_radius         = config.radius_filter_search_radius;
-    minNeighboursInRadius = config.radius_filter_min_neighbours;
+    use_radius_filter     = config.use_radius_filter;
+    search_radius         = config.search_radius;
+    min_neighbours = config.min_neighbours;
 
-    use_passthrough_filter = config.passthrough_filter_enable;
-    limit_min              = config.passthrough_filter_limit_min;
-    limit_max              = config.passthrough_filter_limit_max;
+    use_passthrough_filter = config.use_passthrough_filter;
+    limit_min              = config.limit_min;
+    limit_max              = config.limit_max;
 
     _depth_enabled     = config.enable_depth;
     depth_mode         = depthMode(config.depth_mode);
@@ -682,7 +682,7 @@ int main(int argc, char* argv[])
     if (use_voxel_grid_filter)
     {
       // downsampling cloud parameters
-      nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
+      nh.param<double>("voxel_grid_size", voxel_grid_size, 0.01);
     }
 
     // check for usage of radius filtering
@@ -696,12 +696,12 @@ int main(int argc, char* argv[])
         };
         nh.param<double>("search_radius", search_radius, 0.5);
 
-        if(!nh.hasParam("minNeighboursInRadius"))
+        if(!nh.hasParam("min_neighbours"))
         {
-            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'minNeighboursInRadius' is not set on server.");
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'min_neighbours' is not set on server.");
             ros_node_shutdown = true;
         };
-        nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
+        nh.param<int>("min_neighbours", min_neighbours, 0);
     };
 
     // check for usage of passthrough filtering
