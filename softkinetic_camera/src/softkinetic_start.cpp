@@ -207,21 +207,9 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
   // Create also a gray-scale image from the BGR one
   cvtColor(cv_img_rgb, cv_img_mono, CV_BGR2GRAY);
 
-  // Dump both on ROS image messages; I tried to memcopy to improve speed but failed to
-  // read from the DepthSense::Pointer. But accessing OpenCV images is quite fast, anyway
-  for (int i = 0; i < img_rgb.height; i++)
-  {
-    for (int j = 0; j < img_rgb.width; j++)
-    {
-      int idx = i * img_rgb.width + j;
-      img_mono.data[idx]  = cv_img_mono.at<uchar>(i, j);
-
-      idx *= 3;
-      img_rgb.data[idx++] = cv_img_rgb.at<cv::Vec3b>(i, j)[0];
-      img_rgb.data[idx++] = cv_img_rgb.at<cv::Vec3b>(i, j)[1];
-      img_rgb.data[idx]   = cv_img_rgb.at<cv::Vec3b>(i, j)[2];
-    }
-  }
+  // Dump both on ROS image messages
+  std::memcpy(img_rgb.data.data(),  cv_img_rgb.ptr(),  img_rgb.data.size());
+  std::memcpy(img_mono.data.data(), cv_img_mono.ptr(), img_mono.data.size());
 
   // Ensure that all the images and camera info are timestamped and have the proper frame id
   img_rgb.header.stamp = ros::Time::now();
@@ -360,9 +348,10 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   Vertex p3DPoints[1];
   Point2D p2DPoints[1];
 
-  int count = -1;
-  float* depth_img_ptr = reinterpret_cast<float*>(&img_depth.data[0]);
+  // Dump depth map on image message, though we must do some post-processing for saturated pixels
+  std::memcpy(img_depth.data.data(), data.depthMapFloatingPoint, img_depth.data.size());
 
+  int count = -1;
   for (int i = 0; i < img_depth.height; i++)
   {
     for (int j = 0; j < img_depth.width; j++)
@@ -380,10 +369,11 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
       }
 
       // Saturated pixels on depthMapFloatingPoint have -1 value, but on openni are NaN
-      *depth_img_ptr =
-          data.depthMapFloatingPoint[count] < 0.0 ? std::numeric_limits<float>::quiet_NaN() :
-          data.depthMapFloatingPoint[count];
-      ++depth_img_ptr;
+      if (data.depthMapFloatingPoint[count] < 0.0)
+      {
+        *reinterpret_cast<float*>(&img_depth.data[count*sizeof(float)]) =
+            std::numeric_limits<float>::quiet_NaN();
+      }
 
       // Get mapping between depth map and color map, assuming we have a RGB image
       if (img_rgb.data.size() == 0)
@@ -396,16 +386,10 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
       int x_pos = (int)p2DPoints[0].x;
       int y_pos = (int)p2DPoints[0].y;
 
-      if (y_pos < 0 || y_pos > img_rgb.height || x_pos < 0 || x_pos > img_rgb.width)
+      if (y_pos >= 0 && y_pos <= img_rgb.height && x_pos >= 0 && x_pos <= img_rgb.width)
       {
-        // Out of bounds: depth fov is significantly wider than color one,
-        // so there are black points in the borders of the pointcloud
-        current_cloud->points[count].b = 0;
-        current_cloud->points[count].g = 0;
-        current_cloud->points[count].r = 0;
-      }
-      else
-      {
+        // Within bounds: depth fov is significantly wider than color's
+        // one, so there are black points in the borders of the pointcloud
         current_cloud->points[count].b = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[0];
         current_cloud->points[count].g = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[1];
         current_cloud->points[count].r = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[2];
