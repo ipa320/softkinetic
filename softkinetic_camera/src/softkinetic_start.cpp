@@ -257,46 +257,46 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
 
 void setupCameraInfo(const DepthSense::IntrinsicParameters& params, sensor_msgs::CameraInfo& cam_info)
 {
-  depth_info.distortion_model = "plumb_bob";
-  depth_info.height = params.height;
-  depth_info.width  = params.width;
+  cam_info.distortion_model = "plumb_bob";
+  cam_info.height = params.height;
+  cam_info.width  = params.width;
 
   // Distortion parameters D = [k1, k2, t1, t2, k3]
-  depth_info.D.resize(5);
-  depth_info.D[0] = params.k1;
-  depth_info.D[1] = params.k2;
-  depth_info.D[2] = params.p1;
-  depth_info.D[3] = params.p2;
-  depth_info.D[4] = params.k3;
+  cam_info.D.resize(5);
+  cam_info.D[0] = params.k1;
+  cam_info.D[1] = params.k2;
+  cam_info.D[2] = params.p1;
+  cam_info.D[3] = params.p2;
+  cam_info.D[4] = params.k3;
 
   // Intrinsic camera matrix for the raw (distorted) images:
   //     [fx  0 cx]
   // K = [ 0 fy cy]
   //     [ 0  0  1]
-  depth_info.K[0] = params.fx;
-  depth_info.K[2] = params.cx;
-  depth_info.K[4] = params.fy;
-  depth_info.K[5] = params.cy;
-  depth_info.K[8] = 1.0;
+  cam_info.K[0] = params.fx;
+  cam_info.K[2] = params.cx;
+  cam_info.K[4] = params.fy;
+  cam_info.K[5] = params.cy;
+  cam_info.K[8] = 1.0;
 
   // Rectification matrix (stereo cameras only)
   //     [1 0 0]
   // R = [0 1 0]
   //     [0 0 1]
-  depth_info.R[0] = 1.0;
-  depth_info.R[4] = 1.0;
-  depth_info.R[8] = 1.0;
+  cam_info.R[0] = 1.0;
+  cam_info.R[4] = 1.0;
+  cam_info.R[8] = 1.0;
 
   // Projection/camera matrix; we use the same values as in the raw image, as we are not
   // applying any correction (WARN: is this ok?). For monocular cameras, Tx = Ty = 0.
   //     [fx'  0  cx' Tx]
   // P = [ 0  fy' cy' Ty]
   //     [ 0   0   1   0]
-  depth_info.P[0] = params.fx;
-  depth_info.P[2] = params.cx;
-  depth_info.P[5] = params.fy;
-  depth_info.P[6] = params.cy;
-  depth_info.P[10] = 1.0;
+  cam_info.P[0] = params.fx;
+  cam_info.P[2] = params.cx;
+  cam_info.P[5] = params.fy;
+  cam_info.P[6] = params.cy;
+  cam_info.P[10] = 1.0;
 }
 
 // New depth sample event varsace tieshandler
