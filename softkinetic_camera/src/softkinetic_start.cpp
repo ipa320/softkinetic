@@ -104,6 +104,7 @@ StereoCameraParameters g_scp;
 
 ros::Publisher pub_cloud;
 image_transport::Publisher pub_rgb;
+image_transport::Publisher pub_depth;
 
 sensor_msgs::Image image;
 std_msgs::Int32 test_int;
@@ -113,6 +114,7 @@ int offset;
 /* confidence threshold for DepthNode configuration*/
 int confidence_threshold;
 /* parameters for downsampling cloud */
+bool use_voxel_grid_filter;
 double voxel_grid_side;
 /* parameters for radius filter */
 bool use_radius_filter;
@@ -120,6 +122,17 @@ double search_radius;
 int minNeighboursInRadius;
 /* shutdown request*/
 bool ros_node_shutdown = false;
+/* depth sensor parameters */
+bool _depth_enabled;
+DepthSense::DepthNode::CameraMode depth_mode;
+DepthSense::FrameFormat depth_frame_format;
+int depth_frame_rate;
+/* color sensor parameters */
+bool _color_enabled;
+DepthSense::CompressionType color_compression;
+DepthSense::FrameFormat color_frame_format;
+int color_frame_rate;
+
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
@@ -146,7 +159,6 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     //Create a sensor_msg::Image for ROS based on the new camera image
     //image.header.stamp.nsec = g_cFrames++*1000;
     image.header.stamp = ros::Time::now();
-    int count = 0;
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
@@ -207,6 +219,21 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
 
+    sensor_msgs::Image depth_img_msg;
+    ros::NodeHandle n_depth("~");
+
+    //fill in the depth image message header
+    std::string softkinetic_link;
+    if (n_depth.getParam("/camera_link", softkinetic_link))
+    {
+        depth_img_msg.header.frame_id = softkinetic_link.c_str();
+    }
+    else
+    {
+        depth_img_msg.header.frame_id = "/softkinetic_link";
+    }
+    depth_img_msg.header.stamp = ros::Time::now();
+
     int count = -1;
 
     // Project some 3D points in the Color Frame
@@ -223,8 +250,14 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
-    int cx = w/2;
-    int cy = h/2;
+
+    depth_img_msg.width = w;
+    depth_img_msg.height = h;
+    depth_img_msg.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
+    depth_img_msg.is_bigendian = 0;
+    depth_img_msg.step = sizeof(float)*w;
+    std::size_t data_size = depth_img_msg.width*depth_img_msg.height;
+    depth_img_msg.data.resize(data_size*sizeof(float));
 
     Vertex p3DPoints[1];
     Point2D p2DPoints[1];
@@ -237,9 +270,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     current_cloud->is_dense = false;
     current_cloud->points.resize(w*h);
 
-    uchar b,g,r;
-    uint32_t rgb;
-    cv::Vec3b bgr;
+    uchar b, g, r;
+
+    float* depth_img_ptr = reinterpret_cast<float*>(&depth_img_msg.data[0]);
 
     for(int i = 1;i < h ;i++){
         for(int j = 1;j < w ; j++){
@@ -251,18 +284,42 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
             }else{
                 current_cloud->points[count].z = data.verticesFloatingPoint[count].z;
             }
+
+            //get mapping between depth map and color map, assuming we have a RGB image
+            if(image.data.size() == 0){
+                ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
+                continue;
+            }
             p3DPoints[0] = data.vertices[count];
-            g_pProjHelper->get2DCoordinates ( p3DPoints, p2DPoints, 1, CAMERA_PLANE_COLOR);
+	    g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
             int x_pos = (int)p2DPoints[0].x;
             int y_pos = (int)p2DPoints[0].y;
+
+            if(y_pos < 0 || y_pos > image.height || x_pos < 0 || x_pos > image.width){
+                b = 0;
+                g = 0;
+                r = 0;
+            }else{
+                b = image.data[(y_pos*image.width+x_pos)*3+0];
+                g = image.data[(y_pos*image.width+x_pos)*3+1];
+                r = image.data[(y_pos*image.width+x_pos)*3+2];
+            }
+            current_cloud->points[count].b = b;
+            current_cloud->points[count].g = g;
+            current_cloud->points[count].r = r;
         }
+    }
+
+    //check for usage of voxel grid filtering to downsample point cloud
+    if(use_voxel_grid_filter)
+    {
+         downsampleCloud(current_cloud);
     }
 
     //check for usage of radius filtering
     if(use_radius_filter)
     {
-        //we must downsample the cloud so the filter don't take too long
-        downsampleCloud(current_cloud);
+        //use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
         filterCloudRadiusBased(current_cloud);
     }
 
@@ -270,6 +327,8 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     pcl::toROSMsg(*current_cloud, cloud);
 
     pub_cloud.publish (cloud);
+    pub_depth.publish (depth_img_msg);
+
     g_context.quit();
 }
 
@@ -317,9 +376,10 @@ void configureDepthNode()
     g_dnode.newSampleReceivedEvent().connect(&onNewDepthSample);
 
     DepthNode::Configuration config = g_dnode.getConfiguration();
-    config.frameFormat = FRAME_FORMAT_QVGA;
-    config.framerate = 25;
-    config.mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+
+    config.frameFormat = depth_frame_format;
+    config.framerate = depth_frame_rate;
+    config.mode = depth_mode;
     config.saturation = true;
 
     g_context.requestControl(g_dnode,0);
@@ -374,10 +434,11 @@ void configureColorNode()
     g_cnode.newSampleReceivedEvent().connect(&onNewColorSample);
 
     ColorNode::Configuration config = g_cnode.getConfiguration();
-    config.frameFormat = FRAME_FORMAT_WXGA_H;
-    config.compression = COMPRESSION_TYPE_MJPEG;
+
+    config.frameFormat = color_frame_format;
+    config.compression = color_compression;
     config.powerLineFrequency = POWER_LINE_FREQUENCY_50HZ;
-    config.framerate = 25;
+    config.framerate = color_frame_rate;
 
     g_cnode.setEnableColorMap(true);
 
@@ -420,14 +481,14 @@ void configureColorNode()
 /*----------------------------------------------------------------------------*/
 void configureNode(Node node)
 {
-    if ((node.is<DepthNode>())&&(!g_dnode.isSet()))
+    if ((node.is<DepthNode>())&&(!g_dnode.isSet())&&(_depth_enabled))
     {
         g_dnode = node.as<DepthNode>();
         configureDepthNode();
         g_context.registerNode(node);
     }
 
-    if ((node.is<ColorNode>())&&(!g_cnode.isSet()))
+    if ((node.is<ColorNode>())&&(!g_cnode.isSet())&&(_color_enabled))
     {
         g_cnode = node.as<ColorNode>();
         configureColorNode();
@@ -504,6 +565,14 @@ int main(int argc, char* argv[])
     };
     nh.param<int>("confidence_threshold", confidence_threshold, 150);
 
+    //check for usage of voxel grid filtering to downsample the point cloud
+    nh.param<bool>("use_voxel_grid_filter", use_voxel_grid_filter, false);
+    if (use_voxel_grid_filter)
+    {
+      // downsampling cloud parameters
+      nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
+    }
+
     // check for usage of radius filtering
     nh.param<bool>("use_radius_filter", use_radius_filter, false);
     if(use_radius_filter)
@@ -521,10 +590,50 @@ int main(int argc, char* argv[])
             ros_node_shutdown = true;
         };
         nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
-
-        // downsampling cloud parameters
-        nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
     };
+
+    nh.param<bool>("enable_depth", _depth_enabled, true);
+    std::string depth_mode_str;
+    nh.param<std::string>("depth_mode", depth_mode_str, "close");
+    if ( depth_mode_str == "long" )
+      depth_mode = DepthNode::CAMERA_MODE_LONG_RANGE;
+    else
+      depth_mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+
+    std::string depth_frame_format_str;
+    nh.param<std::string>("depth_frame_format", depth_frame_format_str, "QVGA");
+    if ( depth_frame_format_str == "QQVGA" )
+      depth_frame_format = FRAME_FORMAT_QQVGA;
+    else if ( depth_frame_format_str == "QVGA" )
+      depth_frame_format = FRAME_FORMAT_QVGA;
+    else
+      depth_frame_format = FRAME_FORMAT_VGA;
+
+    nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
+
+    nh.param<bool>("enable_color", _color_enabled, true);
+    std::string color_compression_str;
+    nh.param<std::string>("color_compression", color_compression_str, "MJPEG");
+    if ( color_compression_str == "YUY2" )
+      color_compression = COMPRESSION_TYPE_YUY2;
+    else
+      color_compression = COMPRESSION_TYPE_MJPEG;
+
+    std::string color_frame_format_str;
+    nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
+    if ( color_frame_format_str == "QQVGA" )
+      color_frame_format = FRAME_FORMAT_QQVGA;
+    else if ( color_frame_format_str == "QVGA" )
+      color_frame_format = FRAME_FORMAT_QVGA;
+    else if ( color_frame_format_str == "VGA" )
+      color_frame_format = FRAME_FORMAT_VGA;
+    else if ( color_frame_format_str == "NHD" )
+      color_frame_format = FRAME_FORMAT_NHD;
+    else
+      color_frame_format = FRAME_FORMAT_WXGA_H;
+
+    nh.param<int>("color_frame_rate", color_frame_rate, 25);
+
 
     offset = ros::Time::now().toSec();
     //initialize image transport object
@@ -533,6 +642,7 @@ int main(int argc, char* argv[])
     //initialize publishers
     pub_cloud = nh.advertise<sensor_msgs::PointCloud2> ("depth_registered/points", 1);
     pub_rgb = it.advertise ("rgb_data", 1);
+    pub_depth = it.advertise ("depth_registered/image", 1);
 
     g_context = Context::create("softkinetic");
 
