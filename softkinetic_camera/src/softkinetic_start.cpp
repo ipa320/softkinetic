@@ -602,6 +602,7 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
     //camera_link = config.camera_link;
 
     confidence_threshold = config.confidence_threshold;
+    g_dnode.setConfidenceThreshold(confidence_threshold);
 
     use_voxel_grid_filter = config.use_voxel_grid_filter;
     voxel_grid_size       = config.voxel_grid_size;
