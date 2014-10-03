@@ -59,6 +59,7 @@
 
 //ros include files
 #include <ros/ros.h>
+#include <ros/callback_queue.h>
 #include <std_msgs/Int32.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
@@ -80,6 +81,9 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+
+#include <dynamic_reconfigure/server.h>
+#include <softkinetic_camera/SoftkineticConfig.h>
 
 #include <DepthSense.hxx>
 
@@ -116,11 +120,11 @@ int offset;
 int confidence_threshold;
 /* parameters for downsampling cloud */
 bool use_voxel_grid_filter;
-double voxel_grid_side;
+double voxel_grid_size;
 /* parameters for radius filter */
 bool use_radius_filter;
 double search_radius;
-int minNeighboursInRadius;
+int min_neighbours;
 /* parameters for passthrough filer */
 bool use_passthrough_filter;
 double limit_min;
@@ -138,6 +142,45 @@ DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
 int color_frame_rate;
 
+DepthSense::DepthNode::CameraMode depthMode(const std::string& depth_mode_str)
+{
+    if ( depth_mode_str == "long" )
+        return DepthNode::CAMERA_MODE_LONG_RANGE;
+    else // if ( depth_mode_str == "close" )
+        return DepthNode::CAMERA_MODE_CLOSE_MODE;
+}
+
+DepthSense::FrameFormat depthFrameFormat(const std::string& depth_frame_format_str)
+{
+    if ( depth_frame_format_str == "QQVGA" )
+      return FRAME_FORMAT_QQVGA;
+    else if ( depth_frame_format_str == "QVGA" )
+      return FRAME_FORMAT_QVGA;
+    else // if ( depth_frame_format_str == "VGA" )
+      return FRAME_FORMAT_VGA;
+}
+
+DepthSense::CompressionType colorCompression(const std::string& color_compression_str)
+{
+    if ( color_compression_str == "YUY2" )
+        return COMPRESSION_TYPE_YUY2;
+    else // if ( color_compression_str == "MJPEG" )
+        return COMPRESSION_TYPE_MJPEG;
+}
+
+DepthSense::FrameFormat colorFrameFormat(const std::string& color_frame_format_str)
+{
+    if ( color_frame_format_str == "QQVGA" )
+      return FRAME_FORMAT_QQVGA;
+    else if ( color_frame_format_str == "QVGA" )
+      return FRAME_FORMAT_QVGA;
+    else if ( color_frame_format_str == "VGA" )
+      return FRAME_FORMAT_VGA;
+    else if ( color_frame_format_str == "NHD" )
+      return FRAME_FORMAT_NHD;
+    else // if ( color_frame_format_str == "WXGA_H" )
+      return FRAME_FORMAT_WXGA_H;
+}
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
@@ -195,7 +238,7 @@ void downsampleCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
     //ROS_DEBUG_STREAM("Starting downsampling");
     pcl::VoxelGrid<pcl::PointXYZRGB> sor;
     sor.setInputCloud (cloud_to_filter);
-    sor.setLeafSize (voxel_grid_side, voxel_grid_side, voxel_grid_side);
+    sor.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
     sor.filter (*cloud_to_filter);
     //ROS_DEBUG_STREAM("downsampled!");
 }
@@ -206,7 +249,7 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
     pcl::RadiusOutlierRemoval<pcl::PointXYZRGB> ror;
     ror.setInputCloud(cloud_to_filter);
     ror.setRadiusSearch(search_radius);
-    ror.setMinNeighborsInRadius(minNeighboursInRadius);
+    ror.setMinNeighborsInRadius(min_neighbours);
     // apply filter
     ROS_DEBUG_STREAM("Starting filtering");
     int before = cloud_to_filter->size();
@@ -553,6 +596,61 @@ void onDeviceDisconnected(Context context, Context::DeviceRemovedData data)
     printf("Device disconnected\n");
 }
 
+void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_t level)
+{
+    //@todo this one isn't trivial
+    //camera_link = config.camera_link;
+
+    confidence_threshold = config.confidence_threshold;
+
+    use_voxel_grid_filter = config.use_voxel_grid_filter;
+    voxel_grid_size       = config.voxel_grid_size;
+
+    use_radius_filter     = config.use_radius_filter;
+    search_radius         = config.search_radius;
+    min_neighbours = config.min_neighbours;
+
+    use_passthrough_filter = config.use_passthrough_filter;
+    limit_min              = config.limit_min;
+    limit_max              = config.limit_max;
+
+    _depth_enabled     = config.enable_depth;
+    depth_mode         = depthMode(config.depth_mode);
+    depth_frame_format = depthFrameFormat(config.depth_frame_format);
+    depth_frame_rate   = config.depth_frame_rate;
+
+    _color_enabled     = config.enable_color;
+    color_compression  = colorCompression(config.color_compression);
+    color_frame_format = colorFrameFormat(config.color_frame_format);
+    color_frame_rate   = config.color_frame_rate;
+
+    ROS_DEBUG_STREAM("New configuration:\n" <<
+            //"camera_link = " << camera_link << "\n" <<
+
+            "confidence_threshold = " << confidence_threshold << "\n" <<
+
+            "use_voxel_grid_filter = " << (use_voxel_grid_filter ? "ON" : "OFF" ) << "\n" <<
+            "voxel_grid_size = " << voxel_grid_size << "\n" <<
+
+            "use_radius_filter = " << (use_radius_filter ? "ON" : "OFF" ) << "\n" <<
+            "search_radius = " << search_radius << "\n" <<
+            "min_neighbours = " << min_neighbours << "\n" <<
+
+            "use_passthrough_filter = " << (use_passthrough_filter ? "ON" : "OFF" ) << "\n" <<
+            "limit_min = " << limit_min << "\n" <<
+            "limit_max = " << limit_max << "\n" <<
+
+            "enable_depth = " << (_depth_enabled ? "ON" : "OFF" ) << "\n" <<
+            "depth_mode = " << config.depth_mode << "\n" <<
+            "depth_frame_format = " << config.depth_frame_format << "\n" <<
+            "depth_frame_rate = " << depth_frame_rate << "\n" <<
+
+            "enable_color = " << (_color_enabled ? "ON" : "OFF" ) << "\n" <<
+            "color_compression = " << config.color_compression << "\n" <<
+            "color_frame_format = " << config.color_frame_format << "\n" <<
+            "color_frame_rate = " << color_frame_rate);
+}
+
 /*----------------------------------------------------------------------------*/
 int main(int argc, char* argv[])
 {
@@ -584,7 +682,7 @@ int main(int argc, char* argv[])
     if (use_voxel_grid_filter)
     {
       // downsampling cloud parameters
-      nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
+      nh.param<double>("voxel_grid_size", voxel_grid_size, 0.01);
     }
 
     // check for usage of radius filtering
@@ -598,12 +696,12 @@ int main(int argc, char* argv[])
         };
         nh.param<double>("search_radius", search_radius, 0.5);
 
-        if(!nh.hasParam("minNeighboursInRadius"))
+        if(!nh.hasParam("min_neighbours"))
         {
-            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'minNeighboursInRadius' is not set on server.");
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'min_neighbours' is not set on server.");
             ros_node_shutdown = true;
         };
-        nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
+        nh.param<int>("min_neighbours", min_neighbours, 0);
     };
 
     // check for usage of passthrough filtering
@@ -628,42 +726,22 @@ int main(int argc, char* argv[])
     nh.param<bool>("enable_depth", _depth_enabled, true);
     std::string depth_mode_str;
     nh.param<std::string>("depth_mode", depth_mode_str, "close");
-    if ( depth_mode_str == "long" )
-      depth_mode = DepthNode::CAMERA_MODE_LONG_RANGE;
-    else
-      depth_mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+    depth_mode = depthMode(depth_mode_str);
 
     std::string depth_frame_format_str;
     nh.param<std::string>("depth_frame_format", depth_frame_format_str, "QVGA");
-    if ( depth_frame_format_str == "QQVGA" )
-      depth_frame_format = FRAME_FORMAT_QQVGA;
-    else if ( depth_frame_format_str == "QVGA" )
-      depth_frame_format = FRAME_FORMAT_QVGA;
-    else
-      depth_frame_format = FRAME_FORMAT_VGA;
+    depth_frame_format = depthFrameFormat(depth_frame_format_str);
 
     nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
 
     nh.param<bool>("enable_color", _color_enabled, true);
     std::string color_compression_str;
     nh.param<std::string>("color_compression", color_compression_str, "MJPEG");
-    if ( color_compression_str == "YUY2" )
-      color_compression = COMPRESSION_TYPE_YUY2;
-    else
-      color_compression = COMPRESSION_TYPE_MJPEG;
+    color_compression = colorCompression(color_compression_str);
 
     std::string color_frame_format_str;
     nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
-    if ( color_frame_format_str == "QQVGA" )
-      color_frame_format = FRAME_FORMAT_QQVGA;
-    else if ( color_frame_format_str == "QVGA" )
-      color_frame_format = FRAME_FORMAT_QVGA;
-    else if ( color_frame_format_str == "VGA" )
-      color_frame_format = FRAME_FORMAT_VGA;
-    else if ( color_frame_format_str == "NHD" )
-      color_frame_format = FRAME_FORMAT_NHD;
-    else
-      color_frame_format = FRAME_FORMAT_WXGA_H;
+    color_frame_rate = colorFrameFormat(color_frame_format_str);
 
     nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
@@ -712,6 +790,19 @@ int main(int argc, char* argv[])
         for (int n = 0; n < (int)na.size();n++)
             configureNode(na[n]);
     }
+
+    ros::NodeHandle nh_cfg("~");
+    ros::CallbackQueue callback_queue_cfg;
+    nh_cfg.setCallbackQueue(&callback_queue_cfg);
+
+    dynamic_reconfigure::Server<softkinetic_camera::SoftkineticConfig> server(nh_cfg);
+    server.setCallback(boost::bind(&reconfigure_callback, _1, _2));
+
+    // Handle the dynamic reconfigure server callback on a separate thread
+    // from the g_context.run() called below
+    ros::AsyncSpinner spinner(1, &callback_queue_cfg);
+    spinner.start();
+
     //loop while ros core is operational or Ctrl-C is used
     if(ros_node_shutdown){
         ros::shutdown();

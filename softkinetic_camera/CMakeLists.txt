@@ -1,7 +1,16 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(softkinetic_camera)
 
-find_package(catkin REQUIRED COMPONENTS pcl_ros cv_bridge roscpp rospy std_msgs image_transport message_generation)
+find_package(catkin REQUIRED
+  COMPONENTS
+    pcl_ros
+    cv_bridge
+    roscpp
+    rospy
+    std_msgs
+    image_transport
+    message_generation
+    dynamic_reconfigure)
 
 # find the DepthSense SDK
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
@@ -15,6 +24,7 @@ Cannot continue, aborting.")
   return()
 endif()
 
+generate_dynamic_reconfigure_options(cfg/Softkinetic.cfg)
 
 #######################################
 ## Declare ROS messages and services ##
@@ -30,7 +40,7 @@ endif()
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  CATKIN_DEPENDS pcl_ros roscpp rospy std_msgs message_runtime
+  CATKIN_DEPENDS pcl_ros roscpp rospy std_msgs message_runtime dynamic_reconfigure
 )
 ###########
 ## Build ##
@@ -45,6 +55,7 @@ include_directories(
 #include_directories(/usr/include/suitesparse)
 
 add_executable(softkinetic_bringup_node src/softkinetic_start.cpp)
+add_dependencies(softkinetic_bringup_node ${PROJECT_NAME}_gencfg)
 target_link_libraries(softkinetic_bringup_node ${DepthSenseSDK_LIBRARIES} ${catkin_LIBRARIES})
 
 install(TARGETS softkinetic_bringup_node
