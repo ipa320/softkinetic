@@ -56,6 +56,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <cstring>
 
 //ros include files
 #include <ros/ros.h>
@@ -168,14 +169,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     image.data.resize(w*h*3);
     int count2 = w*h*3-1;
 
-    for(int i = 0;i < w;i++){
-        for(int j = 0;j < h; j++){
-            image.data[count2]   = data.colorMap[count2];
-            image.data[count2+1] = data.colorMap[count2+1];
-            image.data[count2+2] = data.colorMap[count2+2];
-            count2-=3;
-        }
-    }
+    std::memcpy(image.data.data(), data.colorMap, data.colorMap.size());
 
     // Publish the rgb data
     pub_rgb.publish(image);
