@@ -165,6 +165,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
     image.width = w;///2;
     image.height = h;///2;
+    image.step = w*3;
     image.encoding = "bgr8";
     image.data.resize(w*h*3);
     int count2 = w*h*3-1;
