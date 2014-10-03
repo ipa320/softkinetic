@@ -153,7 +153,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 {
     ros::NodeHandle n_color("~");
     std::string softkinetic_link;
-    if (n_color.getParam("/camera_link", softkinetic_link))
+    if (n_color.getParam("camera_link", softkinetic_link))
     {
         image.header.frame_id = softkinetic_link.c_str();
     }
@@ -192,12 +192,12 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 
 void downsampleCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
 {
-    ROS_DEBUG_STREAM("Starting downsampling");
+    //ROS_DEBUG_STREAM("Starting downsampling");
     pcl::VoxelGrid<pcl::PointXYZRGB> sor;
     sor.setInputCloud (cloud_to_filter);
     sor.setLeafSize (voxel_grid_side, voxel_grid_side, voxel_grid_side);
     sor.filter (*cloud_to_filter);
-    ROS_DEBUG_STREAM("downsampled!");
+    //ROS_DEBUG_STREAM("downsampled!");
 }
 
 void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
@@ -248,13 +248,13 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     //fill in the depth image message header
     std::string softkinetic_link;
-    if (n_depth.getParam("/camera_link", softkinetic_link))
+    if (n_depth.getParam("camera_link", softkinetic_link))
     {
         depth_img_msg.header.frame_id = softkinetic_link.c_str();
     }
     else
     {
-        depth_img_msg.header.frame_id = "/softkinetic_link";
+        depth_img_msg.header.frame_id = "/softkinetic_link22";
     }
     depth_img_msg.header.stamp = ros::Time::now();
 
