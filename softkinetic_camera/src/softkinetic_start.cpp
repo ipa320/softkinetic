@@ -73,6 +73,7 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/frustum_culling.h>
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
@@ -129,6 +130,12 @@ int min_neighbours;
 bool use_passthrough_filter;
 double limit_min;
 double limit_max;
+/* parameters for frustum culling filer */
+bool use_frustum_culling_filter;
+double hfov;
+double vfov;
+double near_plane;
+double far_plane;
 /* shutdown request*/
 bool ros_node_shutdown = false;
 /* depth sensor parameters */
@@ -281,6 +288,40 @@ void filterPassThrough(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
     cloud.header.stamp = ros::Time::now();
 }
 
+void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
+{
+    // frustum culling filter:
+    pcl::FrustumCulling<pcl::PointXYZRGB> fc;
+    fc.setInputCloud(cloud_to_filter);
+    // PCL assumes a coordinate system where X is forward, Y is up, and Z is right.
+    // Therefore we must convert from the traditional camera coordinate system
+    // (X right, Y down, Z forward), which is used by this RGBD camera.
+    // See:
+    // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3 
+    Eigen::Matrix4f pose = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f T;
+    T << 0,  0, 1, 0,
+         0, -1, 0, 0,
+         1,  0, 0, 0,
+         0,  0, 0, 1;
+    pose *= T;
+    fc.setCameraPose(pose);
+    fc.setHorizontalFOV(hfov);
+    fc.setVerticalFOV(vfov);
+    fc.setNearPlaneDistance(near_plane);
+    fc.setFarPlaneDistance(far_plane);
+    // apply filter
+    ROS_DEBUG_STREAM("Starting filtering");
+    int before = cloud_to_filter->size();
+    double old_ = ros::Time::now().toSec();
+    fc.filter(*cloud_to_filter);
+    double new_= ros::Time::now().toSec() - old_;
+    int after = cloud_to_filter->size();
+    ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+                  << "points reduced from " << before << " to " << after);
+    cloud.header.stamp = ros::Time::now();
+}
+
 // New depth sample event varsace tieshandler
 void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
@@ -378,6 +419,12 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     if(use_passthrough_filter)
     {
         filterPassThrough(current_cloud);
+    }
+
+    //check for usage of frustum culling filtering
+    if(use_frustum_culling_filter)
+    {
+        filterFrustumCulling(current_cloud);
     }
 
     //convert current_cloud to PointCloud2 and publish
@@ -615,6 +662,12 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
     limit_min              = config.limit_min;
     limit_max              = config.limit_max;
 
+    use_frustum_culling_filter = config.use_frustum_culling_filter;
+    hfov                       = config.hfov;
+    vfov                       = config.vfov;
+    near_plane                 = config.near_plane;
+    far_plane                  = config.far_plane;
+
     _depth_enabled     = config.enable_depth;
     depth_mode         = depthMode(config.depth_mode);
     depth_frame_format = depthFrameFormat(config.depth_frame_format);
@@ -640,6 +693,12 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
             "use_passthrough_filter = " << (use_passthrough_filter ? "ON" : "OFF" ) << "\n" <<
             "limit_min = " << limit_min << "\n" <<
             "limit_max = " << limit_max << "\n" <<
+
+            "use_frustum_culling_filter = " << (use_frustum_culling_filter ? "ON" : "OFF" ) << "\n" <<
+            "hfov = " << hfov << "\n" <<
+            "vfov = " << vfov << "\n" <<
+            "near_plane = " << near_plane << "\n" <<
+            "far_plane = " << far_plane << "\n" <<
 
             "enable_depth = " << (_depth_enabled ? "ON" : "OFF" ) << "\n" <<
             "depth_mode = " << config.depth_mode << "\n" <<
@@ -722,6 +781,39 @@ int main(int argc, char* argv[])
             ros_node_shutdown = true;
         }
         nh.param<double>("limit_max", limit_max, 0.0);
+    }
+
+    // check for usage of frustum culling filtering
+    nh.param<bool>("use_frustum_culling_filter", use_frustum_culling_filter, false);
+    if(use_frustum_culling_filter)
+    {
+        if(!nh.hasParam("hfov"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'hfov' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("hfov", hfov, 180.0);
+
+        if(!nh.hasParam("vfov"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'vfov' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("vfov", vfov, 180.0);
+
+        if(!nh.hasParam("near_plane"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'near_plane' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("near_plane", near_plane, 0.0);
+
+        if(!nh.hasParam("far_plane"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'far_plane' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("far_plane", far_plane, 100.0);
     }
 
     nh.param<bool>("enable_depth", _depth_enabled, true);
