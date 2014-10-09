@@ -56,6 +56,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <cstring>
 
 //ros include files
 #include <ros/ros.h>
@@ -219,18 +220,12 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
     image.width = w;///2;
     image.height = h;///2;
+    image.step = w*3;
     image.encoding = "bgr8";
     image.data.resize(w*h*3);
     int count2 = w*h*3-1;
 
-    for(int i = 0;i < w;i++){
-        for(int j = 0;j < h; j++){
-            image.data[count2]   = data.colorMap[count2];
-            image.data[count2+1] = data.colorMap[count2+1];
-            image.data[count2+2] = data.colorMap[count2+2];
-            count2-=3;
-        }
-    }
+    std::memcpy(image.data.data(), data.colorMap, data.colorMap.size());
 
     // Publish the rgb data
     pub_rgb.publish(image);
@@ -378,9 +373,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     current_cloud->is_dense = false;
     current_cloud->points.resize(w*h);
 
-    uchar b,g,r;
-    uint32_t rgb;
-    cv::Vec3b bgr;
+    uchar b, g, r;
 
     float* depth_img_ptr = reinterpret_cast<float*>(&depth_img_msg.data[0]);
 
@@ -394,11 +387,29 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
             }else{
                 current_cloud->points[count].z = data.verticesFloatingPoint[count].z;
             }
-            p3DPoints[0] = data.vertices[count];
-            g_pProjHelper->get2DCoordinates ( p3DPoints, p2DPoints, 1, CAMERA_PLANE_COLOR);
 
-            *depth_img_ptr = data.depthMapFloatingPoint[count];
-            ++depth_img_ptr;
+            //get mapping between depth map and color map, assuming we have a RGB image
+            if(image.data.size() == 0){
+                ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
+                continue;
+            }
+            p3DPoints[0] = data.vertices[count];
+	    g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
+            int x_pos = (int)p2DPoints[0].x;
+            int y_pos = (int)p2DPoints[0].y;
+
+            if(y_pos < 0 || y_pos > image.height || x_pos < 0 || x_pos > image.width){
+                b = 0;
+                g = 0;
+                r = 0;
+            }else{
+                b = image.data[(y_pos*image.width+x_pos)*3+0];
+                g = image.data[(y_pos*image.width+x_pos)*3+1];
+                r = image.data[(y_pos*image.width+x_pos)*3+2];
+            }
+            current_cloud->points[count].b = b;
+            current_cloud->points[count].g = g;
+            current_cloud->points[count].r = r;
         }
     }
 
