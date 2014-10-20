@@ -197,7 +197,7 @@ DepthSense::FrameFormat colorFrameFormat(const std::string& color_frame_format_s
 void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 {
     //printf("A#%u: %d\n",g_aFrames,data.audioData.size());
-    g_aFrames++;
+    ++g_aFrames;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -225,14 +225,13 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     image.step = w*3;
     image.encoding = "bgr8";
     image.data.resize(w*h*3);
-    int count2 = w*h*3-1;
 
     std::memcpy(image.data.data(), data.colorMap, data.colorMap.size());
 
     // Publish the rgb data
     pub_rgb.publish(image);
 
-    g_cFrames++;
+    ++g_cFrames;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -294,7 +293,7 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
     // Therefore we must convert from the traditional camera coordinate system
     // (X right, Y down, Z forward), which is used by this RGBD camera.
     // See:
-    // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3 
+    // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3
     Eigen::Matrix4f pose = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f T;
     T << 0,  0, 1, 0,
@@ -335,7 +334,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     }
     else
     {
-        depth_img_msg.header.frame_id = "/softkinetic_link22";
+        depth_img_msg.header.frame_id = "softkinetic_link";
     }
     depth_img_msg.header.stamp = ros::Time::now();
 
@@ -367,7 +366,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     FPExtended2DPoint uvd[1];
     FPVertex xyz[1];
 
-    g_dFrames++;
+    ++g_dFrames;
 
     current_cloud->header.frame_id = cloud.header.frame_id;
     current_cloud->height = h;
@@ -406,7 +405,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
                 continue;
             }
             p3DPoints[0] = data.vertices[count];
-	    g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
+            g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
             int x_pos = (int)p2DPoints[0].x;
             int y_pos = (int)p2DPoints[0].y;
 
