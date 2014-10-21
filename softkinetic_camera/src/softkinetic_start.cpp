@@ -149,6 +149,8 @@ bool _color_enabled;
 DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
 int color_frame_rate;
+/* range_max */
+double range_max;
 
 DepthSense::DepthNode::CameraMode depthMode(const std::string& depth_mode_str)
 {
@@ -195,7 +197,7 @@ DepthSense::FrameFormat colorFrameFormat(const std::string& color_frame_format_s
 void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 {
     //printf("A#%u: %d\n",g_aFrames,data.audioData.size());
-    g_aFrames++;
+    ++g_aFrames;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -223,14 +225,13 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     image.step = w*3;
     image.encoding = "bgr8";
     image.data.resize(w*h*3);
-    int count2 = w*h*3-1;
 
     std::memcpy(image.data.data(), data.colorMap, data.colorMap.size());
 
     // Publish the rgb data
     pub_rgb.publish(image);
 
-    g_cFrames++;
+    ++g_cFrames;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -292,7 +293,7 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
     // Therefore we must convert from the traditional camera coordinate system
     // (X right, Y down, Z forward), which is used by this RGBD camera.
     // See:
-    // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3 
+    // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3
     Eigen::Matrix4f pose = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f T;
     T << 0,  0, 1, 0,
@@ -333,11 +334,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     }
     else
     {
-        depth_img_msg.header.frame_id = "/softkinetic_link22";
+        depth_img_msg.header.frame_id = "softkinetic_link";
     }
     depth_img_msg.header.stamp = ros::Time::now();
-
-    int count = -1;
 
     // Project some 3D points in the Color Frame
     if (!g_pProjHelper)
@@ -364,28 +363,40 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     Vertex p3DPoints[1];
     Point2D p2DPoints[1];
+    FPExtended2DPoint uvd[1];
+    FPVertex xyz[1];
 
-    g_dFrames++;
+    ++g_dFrames;
 
     current_cloud->header.frame_id = cloud.header.frame_id;
     current_cloud->height = h;
     current_cloud->width = w;
-    current_cloud->is_dense = false;
+    current_cloud->is_dense = true;
     current_cloud->points.resize(w*h);
 
     uchar b, g, r;
 
-    float* depth_img_ptr = reinterpret_cast<float*>(&depth_img_msg.data[0]);
+    for (size_t i = 0, count = 0; i < h; ++i)
+    {
+        for (size_t j = 0; j < w; ++j, ++count)
+        {
+            if (data.verticesFloatingPoint[count].z < 0.0) // -2.0 or -1.0
+            {
+                // Note that in this case x == y == 0 as well
+                uvd[0].point.x = j;
+                uvd[0].point.y = i;
+                uvd[0].depth = range_max;
+                g_pProjHelper->get3DCoordinates(uvd, xyz, 1);
 
-    for(int i = 1;i < h ;i++){
-        for(int j = 1;j < w ; j++){
-            count++;
-            current_cloud->points[count].x = -data.verticesFloatingPoint[count].x;
-            current_cloud->points[count].y = data.verticesFloatingPoint[count].y;
-            if(data.verticesFloatingPoint[count].z == 32001){
-                current_cloud->points[count].z = 0;
-            }else{
-                current_cloud->points[count].z = data.verticesFloatingPoint[count].z;
+                current_cloud->points[count].x = -xyz[0].x;
+                current_cloud->points[count].y =  xyz[0].y;
+                current_cloud->points[count].z =  xyz[0].z;
+            }
+            else
+            {
+                current_cloud->points[count].x = -data.verticesFloatingPoint[count].x;
+                current_cloud->points[count].y =  data.verticesFloatingPoint[count].y;
+                current_cloud->points[count].z =  data.verticesFloatingPoint[count].z;
             }
 
             //get mapping between depth map and color map, assuming we have a RGB image
@@ -394,7 +405,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
                 continue;
             }
             p3DPoints[0] = data.vertices[count];
-	    g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
+            g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
             int x_pos = (int)p2DPoints[0].x;
             int y_pos = (int)p2DPoints[0].y;
 
@@ -689,6 +700,8 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
     color_frame_format = colorFrameFormat(config.color_frame_format);
     color_frame_rate   = config.color_frame_rate;
 
+    range_max = config.range_max;
+
     ROS_DEBUG_STREAM("New configuration:\n" <<
             //"camera_link = " << camera_link << "\n" <<
 
@@ -719,7 +732,9 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
             "enable_color = " << (_color_enabled ? "ON" : "OFF" ) << "\n" <<
             "color_compression = " << config.color_compression << "\n" <<
             "color_frame_format = " << config.color_frame_format << "\n" <<
-            "color_frame_rate = " << color_frame_rate);
+            "color_frame_rate = " << color_frame_rate << "\n" <<
+
+            "range_max = " << range_max);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -849,6 +864,7 @@ int main(int argc, char* argv[])
 
     nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
+    nh.param<double>("range_max", range_max, 0.0);
 
     offset = ros::Time::now().toSec();
     //initialize image transport object

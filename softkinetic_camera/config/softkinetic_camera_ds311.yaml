@@ -30,3 +30,5 @@ depth_frame_rate  : 30     # 25, 30, 50, 60
 color_compression : YUY2   # YUY2
 color_frame_format: VGA    # VGA
 color_frame_rate  : 30     # 30
+
+range_max: 4.0 # m
