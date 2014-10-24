@@ -845,7 +845,7 @@ int main(int argc, char* argv[])
 
     std::string color_frame_format_str;
     nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
-    color_frame_rate = colorFrameFormat(color_frame_format_str);
+    color_frame_format = colorFrameFormat(color_frame_format_str);
 
     nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
