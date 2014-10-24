@@ -2,16 +2,15 @@
 <package>
   <name>softkinetic_camera</name>
   <version>0.1.0</version>
-  <description>The softkinetic_camera package</description>
+  <description>Softkinetic cameras drivers, including filters.</description>
 
   <maintainer email="flg@ipa.fhg.de">Felipe Garcia Lopez</maintainer>
   <author email="flg@ipa.fhg.de">Felipe Garcia Lopez</author>
 
   <license>BSD</license>
 
-  <!-- The *_depend tags are used to specify dependencies -->
-  <!-- Dependencies can be catkin packages or system dependencies -->
   <buildtool_depend>catkin</buildtool_depend>
+
   <build_depend>pcl_ros</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
@@ -20,6 +19,8 @@
   <build_depend>image_transport</build_depend>
   <build_depend>cv_bridge</build_depend>
   <build_depend>message_generation</build_depend>
+  <build_depend>dynamic_reconfigure</build_depend>
+
   <run_depend>pcl_ros</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
@@ -28,5 +29,6 @@
   <run_depend>image_transport</run_depend>
   <run_depend>cv_bridge</run_depend>
   <run_depend>message_runtime</run_depend>
+  <run_depend>dynamic_reconfigure</run_depend>
 
 </package>
