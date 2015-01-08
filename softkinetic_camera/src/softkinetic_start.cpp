@@ -356,17 +356,18 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   {
     for (int j = 0; j < img_depth.width; j++)
     {
+      // Convert softkinetic vertices into a kinect-like coordinates pointcloud
       count++;
-      current_cloud->points[count].x = -data.verticesFloatingPoint[count].x;
-      current_cloud->points[count].y =  data.verticesFloatingPoint[count].y;
       if (data.verticesFloatingPoint[count].z == 32001)
       {
-        current_cloud->points[count].z = 0;
+        current_cloud->points[count].x = 0;
       }
       else
       {
-        current_cloud->points[count].z = data.verticesFloatingPoint[count].z;
+        current_cloud->points[count].x = data.verticesFloatingPoint[count].z;
       }
+      current_cloud->points[count].y = - data.verticesFloatingPoint[count].x;
+      current_cloud->points[count].z =   data.verticesFloatingPoint[count].y;
 
       // Saturated pixels on depthMapFloatingPoint have -1 value, but on openni are NaN
       if (data.depthMapFloatingPoint[count] < 0.0)
