@@ -468,11 +468,10 @@ void configureDepthNode()
   g_context.requestControl(g_dnode, 0);
 
   g_dnode.setEnableUvMap(true);
-  g_dnode.setEnableVertices(true);
-  g_dnode.setEnableConfidenceMap(true);
-  g_dnode.setConfidenceThreshold(confidence_threshold);
   g_dnode.setEnableVerticesFloatingPoint(true);
   g_dnode.setEnableDepthMapFloatingPoint(true);
+
+  g_dnode.setConfidenceThreshold(confidence_threshold);
 
   try
   {
