@@ -13,4 +13,4 @@ many improvements that are currently being readied for release. Despite the
 name, this version should also work on Hydro installations.
 
 The `hydro_dev` branch is maintained separatedly, as both branches have notably
-diverged. Some topic and parameters names are different, so they are compatible.
+diverged. Some topic and parameters names are different, so they are not compatible.
