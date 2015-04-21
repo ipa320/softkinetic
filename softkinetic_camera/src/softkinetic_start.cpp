@@ -102,8 +102,6 @@ uint32_t g_dFrames = 0;
 
 bool g_bDeviceFound = false;
 
-ProjectionHelper* g_pProjHelper = NULL;
-
 ros::Publisher pub_cloud;
 ros::Publisher pub_rgb_info;
 ros::Publisher pub_depth_info;
@@ -166,8 +164,8 @@ void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 // New color sample event handler
 void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 {
-  // If this is the first sample, we must fill all the constant values on image and
-  // camera info messages to increase working rate
+  // If this is the first sample, we fill all the constant values
+  // on image and camera info messages to increase working rate
   if (img_rgb.data.size() == 0)
   {
     // Create two sensor_msg::Image for color and grayscale images on new camera image
@@ -302,12 +300,10 @@ void setupCameraInfo(const DepthSense::IntrinsicParameters& params, sensor_msgs:
 // New depth sample event varsace tieshandler
 void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
+  // If this is the first sample, we fill all the constant values
+  // on image and camera info messages to increase working rate
   if (img_depth.data.size() == 0)
   {
-    // Project some 3D points in the Color Frame
-    if (!g_pProjHelper)
-      g_pProjHelper = new ProjectionHelper(data.stereoCameraParameters);
-
     int32_t w, h;
     FrameFormat_toResolution(data.captureConfiguration.frameFormat, &w, &h);
 
@@ -382,15 +378,13 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
         ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
         continue;
       }
-      p3DPoints[0] = data.vertices[count];
-      g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
-      int x_pos = (int)p2DPoints[0].x;
-      int y_pos = (int)p2DPoints[0].y;
-
-      if (y_pos >= 0 && y_pos <= img_rgb.height && x_pos >= 0 && x_pos <= img_rgb.width)
+      UV uv = data.uvMap[count];
+      if (uv.u != -FLT_MAX && uv.v != -FLT_MAX)
       {
         // Within bounds: depth fov is significantly wider than color's
         // one, so there are black points in the borders of the pointcloud
+        int x_pos = (int)round(uv.u*img_depth.width);
+        int y_pos = (int)round(uv.v*img_depth.height);
         current_cloud->points[count].b = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[0];
         current_cloud->points[count].g = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[1];
         current_cloud->points[count].r = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[2];
@@ -473,11 +467,11 @@ void configureDepthNode()
 
   g_context.requestControl(g_dnode, 0);
 
-  g_dnode.setEnableVertices(true);
-  g_dnode.setEnableConfidenceMap(true);
-  g_dnode.setConfidenceThreshold(confidence_threshold);
+  g_dnode.setEnableUvMap(true);
   g_dnode.setEnableVerticesFloatingPoint(true);
   g_dnode.setEnableDepthMapFloatingPoint(true);
+
+  g_dnode.setConfidenceThreshold(confidence_threshold);
 
   try
   {
@@ -831,8 +825,6 @@ int main(int argc, char* argv[])
   if (g_anode.isSet())
     g_context.unregisterNode(g_anode);
 
-  if (g_pProjHelper)
-    delete g_pProjHelper;
   g_context.stopNodes();
 
   return 0;
