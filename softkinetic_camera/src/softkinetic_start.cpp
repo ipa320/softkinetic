@@ -60,6 +60,7 @@
 
 //ros include files
 #include <ros/ros.h>
+#include <ros/callback_queue.h>
 #include <std_msgs/Int32.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
@@ -72,6 +73,8 @@
 #include <pcl/range_image/range_image.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/frustum_culling.h>
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
@@ -80,6 +83,9 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+
+#include <dynamic_reconfigure/server.h>
+#include <softkinetic_camera/SoftkineticConfig.h>
 
 #include <DepthSense.hxx>
 
@@ -116,11 +122,21 @@ int offset;
 int confidence_threshold;
 /* parameters for downsampling cloud */
 bool use_voxel_grid_filter;
-double voxel_grid_side;
+double voxel_grid_size;
 /* parameters for radius filter */
 bool use_radius_filter;
 double search_radius;
-int minNeighboursInRadius;
+int min_neighbours;
+/* parameters for passthrough filer */
+bool use_passthrough_filter;
+double limit_min;
+double limit_max;
+/* parameters for frustum culling filer */
+bool use_frustum_culling_filter;
+double hfov;
+double vfov;
+double near_plane;
+double far_plane;
 /* shutdown request*/
 bool ros_node_shutdown = false;
 /* depth sensor parameters */
@@ -133,14 +149,55 @@ bool _color_enabled;
 DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
 int color_frame_rate;
+/* range_max */
+double range_max;
 
+DepthSense::DepthNode::CameraMode depthMode(const std::string& depth_mode_str)
+{
+    if ( depth_mode_str == "long" )
+        return DepthNode::CAMERA_MODE_LONG_RANGE;
+    else // if ( depth_mode_str == "close" )
+        return DepthNode::CAMERA_MODE_CLOSE_MODE;
+}
+
+DepthSense::FrameFormat depthFrameFormat(const std::string& depth_frame_format_str)
+{
+    if ( depth_frame_format_str == "QQVGA" )
+      return FRAME_FORMAT_QQVGA;
+    else if ( depth_frame_format_str == "QVGA" )
+      return FRAME_FORMAT_QVGA;
+    else // if ( depth_frame_format_str == "VGA" )
+      return FRAME_FORMAT_VGA;
+}
+
+DepthSense::CompressionType colorCompression(const std::string& color_compression_str)
+{
+    if ( color_compression_str == "YUY2" )
+        return COMPRESSION_TYPE_YUY2;
+    else // if ( color_compression_str == "MJPEG" )
+        return COMPRESSION_TYPE_MJPEG;
+}
+
+DepthSense::FrameFormat colorFrameFormat(const std::string& color_frame_format_str)
+{
+    if ( color_frame_format_str == "QQVGA" )
+      return FRAME_FORMAT_QQVGA;
+    else if ( color_frame_format_str == "QVGA" )
+      return FRAME_FORMAT_QVGA;
+    else if ( color_frame_format_str == "VGA" )
+      return FRAME_FORMAT_VGA;
+    else if ( color_frame_format_str == "NHD" )
+      return FRAME_FORMAT_NHD;
+    else // if ( color_frame_format_str == "WXGA_H" )
+      return FRAME_FORMAT_WXGA_H;
+}
 
 /*----------------------------------------------------------------------------*/
 // New audio sample event handler
 void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 {
     //printf("A#%u: %d\n",g_aFrames,data.audioData.size());
-    g_aFrames++;
+    ++g_aFrames;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -149,7 +206,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 {
     ros::NodeHandle n_color("~");
     std::string softkinetic_link;
-    if (n_color.getParam("/camera_link", softkinetic_link))
+    if (n_color.getParam("camera_link", softkinetic_link))
     {
         image.header.frame_id = softkinetic_link.c_str();
     }
@@ -168,26 +225,25 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
     image.step = w*3;
     image.encoding = "bgr8";
     image.data.resize(w*h*3);
-    int count2 = w*h*3-1;
 
     std::memcpy(image.data.data(), data.colorMap, data.colorMap.size());
 
     // Publish the rgb data
     pub_rgb.publish(image);
 
-    g_cFrames++;
+    ++g_cFrames;
 }
 
 /*----------------------------------------------------------------------------*/
 
 void downsampleCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
 {
-    ROS_DEBUG_STREAM("Starting downsampling");
+    //ROS_DEBUG_STREAM("Starting downsampling");
     pcl::VoxelGrid<pcl::PointXYZRGB> sor;
     sor.setInputCloud (cloud_to_filter);
-    sor.setLeafSize (voxel_grid_side, voxel_grid_side, voxel_grid_side);
+    sor.setLeafSize (voxel_grid_size, voxel_grid_size, voxel_grid_size);
     sor.filter (*cloud_to_filter);
-    ROS_DEBUG_STREAM("downsampled!");
+    //ROS_DEBUG_STREAM("downsampled!");
 }
 
 void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
@@ -196,12 +252,65 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
     pcl::RadiusOutlierRemoval<pcl::PointXYZRGB> ror;
     ror.setInputCloud(cloud_to_filter);
     ror.setRadiusSearch(search_radius);
-    ror.setMinNeighborsInRadius(minNeighboursInRadius);
+    ror.setMinNeighborsInRadius(min_neighbours);
     // apply filter
     ROS_DEBUG_STREAM("Starting filtering");
     int before = cloud_to_filter->size();
     double old_ = ros::Time::now().toSec();
     ror.filter(*cloud_to_filter);
+    double new_= ros::Time::now().toSec() - old_;
+    int after = cloud_to_filter->size();
+    ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+                  << "points reduced from " << before << " to " << after);
+    cloud.header.stamp = ros::Time::now();
+}
+
+void filterPassThrough(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
+{
+    // passthrough filter:
+    pcl::PassThrough<pcl::PointXYZRGB> pt;
+    pt.setInputCloud(cloud_to_filter);
+    pt.setFilterFieldName("z");
+    pt.setFilterLimits(limit_min, limit_max);
+    // apply filter
+    ROS_DEBUG_STREAM("Starting filtering");
+    int before = cloud_to_filter->size();
+    double old_ = ros::Time::now().toSec();
+    pt.filter(*cloud_to_filter);
+    double new_= ros::Time::now().toSec() - old_;
+    int after = cloud_to_filter->size();
+    ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+                  << "points reduced from " << before << " to " << after);
+    cloud.header.stamp = ros::Time::now();
+}
+
+void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
+{
+    // frustum culling filter:
+    pcl::FrustumCulling<pcl::PointXYZRGB> fc;
+    fc.setInputCloud(cloud_to_filter);
+    // PCL assumes a coordinate system where X is forward, Y is up, and Z is right.
+    // Therefore we must convert from the traditional camera coordinate system
+    // (X right, Y down, Z forward), which is used by this RGBD camera.
+    // See:
+    // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3
+    Eigen::Matrix4f pose = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f T;
+    T << 0,  0, 1, 0,
+         0, -1, 0, 0,
+         1,  0, 0, 0,
+         0,  0, 0, 1;
+    pose *= T;
+    fc.setCameraPose(pose);
+    fc.setHorizontalFOV(hfov);
+    fc.setVerticalFOV(vfov);
+    fc.setNearPlaneDistance(near_plane);
+    fc.setFarPlaneDistance(far_plane);
+    // apply filter
+    ROS_DEBUG_STREAM("Starting filtering");
+    int before = cloud_to_filter->size();
+    double old_ = ros::Time::now().toSec();
+    fc.filter(*cloud_to_filter);
     double new_= ros::Time::now().toSec() - old_;
     int after = cloud_to_filter->size();
     ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
@@ -219,17 +328,15 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     //fill in the depth image message header
     std::string softkinetic_link;
-    if (n_depth.getParam("/camera_link", softkinetic_link))
+    if (n_depth.getParam("camera_link", softkinetic_link))
     {
         depth_img_msg.header.frame_id = softkinetic_link.c_str();
     }
     else
     {
-        depth_img_msg.header.frame_id = "/softkinetic_link";
+        depth_img_msg.header.frame_id = "softkinetic_link";
     }
     depth_img_msg.header.stamp = ros::Time::now();
-
-    int count = -1;
 
     // Project some 3D points in the Color Frame
     if (!g_pProjHelper)
@@ -256,28 +363,40 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
     Vertex p3DPoints[1];
     Point2D p2DPoints[1];
+    FPExtended2DPoint uvd[1];
+    FPVertex xyz[1];
 
-    g_dFrames++;
+    ++g_dFrames;
 
     current_cloud->header.frame_id = cloud.header.frame_id;
     current_cloud->height = h;
     current_cloud->width = w;
-    current_cloud->is_dense = false;
+    current_cloud->is_dense = true;
     current_cloud->points.resize(w*h);
 
     uchar b, g, r;
 
-    float* depth_img_ptr = reinterpret_cast<float*>(&depth_img_msg.data[0]);
+    for (size_t i = 0, count = 0; i < h; ++i)
+    {
+        for (size_t j = 0; j < w; ++j, ++count)
+        {
+            if (data.verticesFloatingPoint[count].z < 0.0) // -2.0 or -1.0
+            {
+                // Note that in this case x == y == 0 as well
+                uvd[0].point.x = j;
+                uvd[0].point.y = i;
+                uvd[0].depth = range_max;
+                g_pProjHelper->get3DCoordinates(uvd, xyz, 1);
 
-    for(int i = 1;i < h ;i++){
-        for(int j = 1;j < w ; j++){
-            count++;
-            current_cloud->points[count].x = -data.verticesFloatingPoint[count].x;
-            current_cloud->points[count].y = data.verticesFloatingPoint[count].y;
-            if(data.verticesFloatingPoint[count].z == 32001){
-                current_cloud->points[count].z = 0;
-            }else{
-                current_cloud->points[count].z = data.verticesFloatingPoint[count].z;
+                current_cloud->points[count].x = -xyz[0].x;
+                current_cloud->points[count].y =  xyz[0].y;
+                current_cloud->points[count].z =  xyz[0].z;
+            }
+            else
+            {
+                current_cloud->points[count].x = -data.verticesFloatingPoint[count].x;
+                current_cloud->points[count].y =  data.verticesFloatingPoint[count].y;
+                current_cloud->points[count].z =  data.verticesFloatingPoint[count].z;
             }
 
             //get mapping between depth map and color map, assuming we have a RGB image
@@ -286,7 +405,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
                 continue;
             }
             p3DPoints[0] = data.vertices[count];
-	    g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
+            g_pProjHelper->get2DCoordinates(p3DPoints, p2DPoints, 2, CAMERA_PLANE_COLOR);
             int x_pos = (int)p2DPoints[0].x;
             int y_pos = (int)p2DPoints[0].y;
 
@@ -316,6 +435,18 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     {
         //use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
         filterCloudRadiusBased(current_cloud);
+    }
+
+    //check for usage of passthrough filtering
+    if(use_passthrough_filter)
+    {
+        filterPassThrough(current_cloud);
+    }
+
+    //check for usage of frustum culling filtering
+    if(use_frustum_culling_filter)
+    {
+        filterFrustumCulling(current_cloud);
     }
 
     //convert current_cloud to PointCloud2 and publish
@@ -534,6 +665,78 @@ void onDeviceDisconnected(Context context, Context::DeviceRemovedData data)
     printf("Device disconnected\n");
 }
 
+void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_t level)
+{
+    //@todo this one isn't trivial
+    //camera_link = config.camera_link;
+
+    confidence_threshold = config.confidence_threshold;
+    g_dnode.setConfidenceThreshold(confidence_threshold);
+
+    use_voxel_grid_filter = config.use_voxel_grid_filter;
+    voxel_grid_size       = config.voxel_grid_size;
+
+    use_radius_filter     = config.use_radius_filter;
+    search_radius         = config.search_radius;
+    min_neighbours = config.min_neighbours;
+
+    use_passthrough_filter = config.use_passthrough_filter;
+    limit_min              = config.limit_min;
+    limit_max              = config.limit_max;
+
+    use_frustum_culling_filter = config.use_frustum_culling_filter;
+    hfov                       = config.hfov;
+    vfov                       = config.vfov;
+    near_plane                 = config.near_plane;
+    far_plane                  = config.far_plane;
+
+    _depth_enabled     = config.enable_depth;
+    depth_mode         = depthMode(config.depth_mode);
+    depth_frame_format = depthFrameFormat(config.depth_frame_format);
+    depth_frame_rate   = config.depth_frame_rate;
+
+    _color_enabled     = config.enable_color;
+    color_compression  = colorCompression(config.color_compression);
+    color_frame_format = colorFrameFormat(config.color_frame_format);
+    color_frame_rate   = config.color_frame_rate;
+
+    range_max = config.range_max;
+
+    ROS_DEBUG_STREAM("New configuration:\n" <<
+            //"camera_link = " << camera_link << "\n" <<
+
+            "confidence_threshold = " << confidence_threshold << "\n" <<
+
+            "use_voxel_grid_filter = " << (use_voxel_grid_filter ? "ON" : "OFF" ) << "\n" <<
+            "voxel_grid_size = " << voxel_grid_size << "\n" <<
+
+            "use_radius_filter = " << (use_radius_filter ? "ON" : "OFF" ) << "\n" <<
+            "search_radius = " << search_radius << "\n" <<
+            "min_neighbours = " << min_neighbours << "\n" <<
+
+            "use_passthrough_filter = " << (use_passthrough_filter ? "ON" : "OFF" ) << "\n" <<
+            "limit_min = " << limit_min << "\n" <<
+            "limit_max = " << limit_max << "\n" <<
+
+            "use_frustum_culling_filter = " << (use_frustum_culling_filter ? "ON" : "OFF" ) << "\n" <<
+            "hfov = " << hfov << "\n" <<
+            "vfov = " << vfov << "\n" <<
+            "near_plane = " << near_plane << "\n" <<
+            "far_plane = " << far_plane << "\n" <<
+
+            "enable_depth = " << (_depth_enabled ? "ON" : "OFF" ) << "\n" <<
+            "depth_mode = " << config.depth_mode << "\n" <<
+            "depth_frame_format = " << config.depth_frame_format << "\n" <<
+            "depth_frame_rate = " << depth_frame_rate << "\n" <<
+
+            "enable_color = " << (_color_enabled ? "ON" : "OFF" ) << "\n" <<
+            "color_compression = " << config.color_compression << "\n" <<
+            "color_frame_format = " << config.color_frame_format << "\n" <<
+            "color_frame_rate = " << color_frame_rate << "\n" <<
+
+            "range_max = " << range_max);
+}
+
 /*----------------------------------------------------------------------------*/
 int main(int argc, char* argv[])
 {
@@ -565,7 +768,7 @@ int main(int argc, char* argv[])
     if (use_voxel_grid_filter)
     {
       // downsampling cloud parameters
-      nh.param<double>("voxel_grid_side", voxel_grid_side, 0.01);
+      nh.param<double>("voxel_grid_size", voxel_grid_size, 0.01);
     }
 
     // check for usage of radius filtering
@@ -579,56 +782,89 @@ int main(int argc, char* argv[])
         };
         nh.param<double>("search_radius", search_radius, 0.5);
 
-        if(!nh.hasParam("minNeighboursInRadius"))
+        if(!nh.hasParam("min_neighbours"))
         {
-            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'minNeighboursInRadius' is not set on server.");
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'min_neighbours' is not set on server.");
             ros_node_shutdown = true;
         };
-        nh.param<int>("minNeighboursInRadius", minNeighboursInRadius, 0);
+        nh.param<int>("min_neighbours", min_neighbours, 0);
     };
+
+    // check for usage of passthrough filtering
+    nh.param<bool>("use_passthrough_filter", use_passthrough_filter, false);
+    if(use_passthrough_filter)
+    {
+        if(!nh.hasParam("limit_min"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'limit_min' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("limit_min", limit_min, 0.0);
+
+        if(!nh.hasParam("limit_max"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'limit_max' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("limit_max", limit_max, 0.0);
+    }
+
+    // check for usage of frustum culling filtering
+    nh.param<bool>("use_frustum_culling_filter", use_frustum_culling_filter, false);
+    if(use_frustum_culling_filter)
+    {
+        if(!nh.hasParam("hfov"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'hfov' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("hfov", hfov, 180.0);
+
+        if(!nh.hasParam("vfov"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'vfov' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("vfov", vfov, 180.0);
+
+        if(!nh.hasParam("near_plane"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'near_plane' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("near_plane", near_plane, 0.0);
+
+        if(!nh.hasParam("far_plane"))
+        {
+            ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'far_plane' is not set on server.");
+            ros_node_shutdown = true;
+        }
+        nh.param<double>("far_plane", far_plane, 100.0);
+    }
 
     nh.param<bool>("enable_depth", _depth_enabled, true);
     std::string depth_mode_str;
     nh.param<std::string>("depth_mode", depth_mode_str, "close");
-    if ( depth_mode_str == "long" )
-      depth_mode = DepthNode::CAMERA_MODE_LONG_RANGE;
-    else
-      depth_mode = DepthNode::CAMERA_MODE_CLOSE_MODE;
+    depth_mode = depthMode(depth_mode_str);
 
     std::string depth_frame_format_str;
     nh.param<std::string>("depth_frame_format", depth_frame_format_str, "QVGA");
-    if ( depth_frame_format_str == "QQVGA" )
-      depth_frame_format = FRAME_FORMAT_QQVGA;
-    else if ( depth_frame_format_str == "QVGA" )
-      depth_frame_format = FRAME_FORMAT_QVGA;
-    else
-      depth_frame_format = FRAME_FORMAT_VGA;
+    depth_frame_format = depthFrameFormat(depth_frame_format_str);
 
     nh.param<int>("depth_frame_rate", depth_frame_rate, 25);
 
     nh.param<bool>("enable_color", _color_enabled, true);
     std::string color_compression_str;
     nh.param<std::string>("color_compression", color_compression_str, "MJPEG");
-    if ( color_compression_str == "YUY2" )
-      color_compression = COMPRESSION_TYPE_YUY2;
-    else
-      color_compression = COMPRESSION_TYPE_MJPEG;
+    color_compression = colorCompression(color_compression_str);
 
     std::string color_frame_format_str;
     nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
-    if ( color_frame_format_str == "QQVGA" )
-      color_frame_format = FRAME_FORMAT_QQVGA;
-    else if ( color_frame_format_str == "QVGA" )
-      color_frame_format = FRAME_FORMAT_QVGA;
-    else if ( color_frame_format_str == "VGA" )
-      color_frame_format = FRAME_FORMAT_VGA;
-    else if ( color_frame_format_str == "NHD" )
-      color_frame_format = FRAME_FORMAT_NHD;
-    else
-      color_frame_format = FRAME_FORMAT_WXGA_H;
+    color_frame_format = colorFrameFormat(color_frame_format_str);
 
     nh.param<int>("color_frame_rate", color_frame_rate, 25);
 
+    nh.param<double>("range_max", range_max, 0.0);
 
     offset = ros::Time::now().toSec();
     //initialize image transport object
@@ -674,6 +910,19 @@ int main(int argc, char* argv[])
         for (int n = 0; n < (int)na.size();n++)
             configureNode(na[n]);
     }
+
+    ros::NodeHandle nh_cfg("~");
+    ros::CallbackQueue callback_queue_cfg;
+    nh_cfg.setCallbackQueue(&callback_queue_cfg);
+
+    dynamic_reconfigure::Server<softkinetic_camera::SoftkineticConfig> server(nh_cfg);
+    server.setCallback(boost::bind(&reconfigure_callback, _1, _2));
+
+    // Handle the dynamic reconfigure server callback on a separate thread
+    // from the g_context.run() called below
+    ros::AsyncSpinner spinner(1, &callback_queue_cfg);
+    spinner.start();
+
     //loop while ros core is operational or Ctrl-C is used
     if(ros_node_shutdown){
         ros::shutdown();
