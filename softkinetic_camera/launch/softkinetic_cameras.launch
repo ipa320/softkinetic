@@ -8,14 +8,14 @@ The arguments given are the device indices of the cameras determined by the Dept
   	<node name="softkinetic_left" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="0" output="screen" >
   		<param name="camera_link" type="string" value="softkinetic_left_link" />
   		<param name="confidence_threshold" type="int" value="150" />
-		<param name="use_radius_filter" type="bool" value="false" />
+		<param name="use_radius_outlier_filter" type="bool" value="false" />
 		<param name="search_radius" type="double" value="0.05" />
 		<param name="min_neighbours" type="int" value="50" /> 
   	</node>
   	<node name="softkinetic_right" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="1" output="screen">
-  		<param name="camera_link" type="string" value="softkinetic_right_link" /> 
+  		<param name="camera_link" type="string" value="softkinetic_right_link" />
   		<param name="confidence_threshold" type="int" value="150" />
-		<param name="use_radius_filter" type="bool" value="false" />
+		<param name="use_radius_outlier_filter" type="bool" value="false" />
 		<param name="search_radius" type="double" value="0.05" />
 		<param name="min_neighbours" type="int" value="50" /> 
         </node>
