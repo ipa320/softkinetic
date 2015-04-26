@@ -284,18 +284,24 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 
 void downsampleCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
 {
-  ROS_DEBUG_STREAM("Starting downsampling");
   pcl::VoxelGrid<pcl::PointXYZRGB> sor;
   sor.setInputCloud(cloud_to_filter);
   sor.setLeafSize(voxel_grid_size, voxel_grid_size, voxel_grid_size);
+  // apply filter
+  ROS_DEBUG_STREAM("Starting downsampling");
+  int before = cloud_to_filter->size();
+  double old = ros::Time::now().toSec();
   sor.filter(*cloud_to_filter);
-  ROS_DEBUG_STREAM("downsampled!");
+  double new_ = ros::Time::now().toSec() - old;
+  int after = cloud_to_filter->size();
+  ROS_DEBUG_STREAM("downsampled in " << new_ << " seconds; "
+                << "points reduced from " << before << " to " << after);
 }
 
 void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
 {
   // Radius outlier removal filter:
-  pcl::RadiusOutlierRemoval < pcl::PointXYZRGB > ror;
+  pcl::RadiusOutlierRemoval<pcl::PointXYZRGB> ror;
   ror.setInputCloud(cloud_to_filter);
   ror.setRadiusSearch(search_radius);
   ror.setMinNeighborsInRadius(min_neighbours);
@@ -306,7 +312,7 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
   ror.filter(*cloud_to_filter);
   double new_ = ros::Time::now().toSec() - old;
   int after = cloud_to_filter->size();
-  ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+  ROS_DEBUG_STREAM("filtered in " << new_ << " seconds; "
                 << "points reduced from " << before << " to " << after);
 }
 
@@ -324,7 +330,7 @@ void filterPassThrough(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
   pt.filter(*cloud_to_filter);
   double new_= ros::Time::now().toSec() - old;
   int after = cloud_to_filter->size();
-  ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+  ROS_DEBUG_STREAM("filtered in " << new_ << " seconds; "
                 << "points reduced from " << before << " to " << after);
 }
 
@@ -338,12 +344,12 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
   // (X right, Y down, Z forward), which is used by this RGBD camera.
   // See:
   // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3
-  // XXX NOT WORKING ON INDIGO!!! I SUPOSSE BECAUSE WE USE KINECT FRAME, NO SOFTKINECTIC ONE
+  // XXX We are not using the same frame for the pointcloud as kinect! see issue #46
   Eigen::Matrix4f pose = Eigen::Matrix4f::Identity();
   Eigen::Matrix4f T;
-  T << 0, 0, 1, 0,
+  T << 1, 0, 0, 0,
+       0, 0, 1, 0,
        0,-1, 0, 0,
-       1, 0, 0, 0,
        0, 0, 0, 1;
   pose *= T;
 
@@ -359,7 +365,7 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
   fc.filter(*cloud_to_filter);
   double new_= ros::Time::now().toSec() - old;
   int after = cloud_to_filter->size();
-  ROS_DEBUG_STREAM("filtered in " << new_ << " seconds;"
+  ROS_DEBUG_STREAM("filtered in " << new_ << " seconds; "
                 << "points reduced from " << before << " to " << after);
 }
 
@@ -444,7 +450,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   current_cloud->header.frame_id = cloud.header.frame_id;
   current_cloud->width  = w;
   current_cloud->height = h;
-  current_cloud->is_dense = false;
+  current_cloud->is_dense = true;
   current_cloud->points.resize(w * h);
 
   ++g_dFrames;
@@ -457,17 +463,21 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
   for (int count = 0; count < w * h; count++)
   {
-    // Convert softkinetic vertices into a kinect-like coordinates pointcloud
-    current_cloud->points[count].x =   data.verticesFloatingPoint[count].z;
-    current_cloud->points[count].y = - data.verticesFloatingPoint[count].x;
-    current_cloud->points[count].z =   data.verticesFloatingPoint[count].y;
-
     // Saturated pixels on depthMapFloatingPoint have -1 value, but on openni are NaN
     if (data.depthMapFloatingPoint[count] < 0.0)
     {
       *reinterpret_cast<float*>(&img_depth.data[count*sizeof(float)]) =
           std::numeric_limits<float>::quiet_NaN();
+
+      // We don't process these pixels as they correspond to all-zero 3D points; but
+      // we keep them in the pointcloud so the downsampling filter can be applied
+      continue;
     }
+
+    // Convert softkinetic vertices into a kinect-like coordinates pointcloud
+    current_cloud->points[count].x =   data.verticesFloatingPoint[count].z;
+    current_cloud->points[count].y = - data.verticesFloatingPoint[count].x;
+    current_cloud->points[count].z =   data.verticesFloatingPoint[count].y;
 
     // Get mapping between depth map and color map, assuming we have a RGB image
     if (img_rgb.data.size() == 0)
@@ -489,16 +499,11 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   }
 
   // Check for usage of voxel grid filtering to downsample point cloud
+  // XXX This must be the first filter to be called, as it requires the "squared" point cloud
+  // we create (with proper values for width and height) that any other filter would destroy
   if (use_voxel_grid_filter)
   {
     downsampleCloud(current_cloud);
-  }
-
-  // Check for usage of radius filtering
-  if (use_radius_outlier_filter)
-  {
-    // use_voxel_grid_filter should be enabled so that the radius filter doesn't take too long
-    filterCloudRadiusBased(current_cloud);
   }
 
   // Check for usage of passthrough filtering
@@ -511,6 +516,17 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   if (use_frustum_culling_filter)
   {
     filterFrustumCulling(current_cloud);
+  }
+
+  // Check for usage of radius outlier filtering
+  if (use_radius_outlier_filter)
+  {
+    // XXX Use any other filter before this one to remove the large amount of all-zero points the
+    // camera creates for saturated pixels; if not, radius outlier filter takes really, really long
+    if (use_voxel_grid_filter || use_passthrough_filter || use_frustum_culling_filter)
+      filterCloudRadiusBased(current_cloud);
+    else
+      ROS_WARN_THROTTLE(2.0, "Calling radius outlier removal as the only filter would take too long!");
   }
 
   // Convert current_cloud to PointCloud2 and publish
