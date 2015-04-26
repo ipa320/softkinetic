@@ -255,7 +255,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
   }
   else
   {
-    // Nothing special to do for MJPEG stream; just cast and reuse the camera data    
+    // Nothing special to do for MJPEG stream; just cast and reuse the camera data
     cv_img_rgb.data = reinterpret_cast<uchar *>(
           const_cast<uint8_t *>(static_cast<const uint8_t *>(data.colorMap)));
   }
@@ -346,6 +346,7 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
        1, 0, 0, 0,
        0, 0, 0, 1;
   pose *= T;
+
   fc.setCameraPose(pose);
   fc.setHorizontalFOV(hfov);
   fc.setVerticalFOV(vfov);
@@ -406,25 +407,20 @@ void setupCameraInfo(const DepthSense::IntrinsicParameters& params, sensor_msgs:
   cam_info.P[10] = 1.0;
 }
 
-// New depth sample event varsace tieshandler
+// New depth sample event
 void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 {
   // If this is the first sample, we fill all the constant values
   // on image and camera info messages to increase working rate
   if (img_depth.data.size() == 0)
   {
-    int32_t w, h;
-    FrameFormat_toResolution(data.captureConfiguration.frameFormat, &w, &h);
-
-    img_depth.width = w;
-    img_depth.height = h;
+    FrameFormat_toResolution(data.captureConfiguration.frameFormat,
+                             (int32_t*)&img_depth.width, (int32_t*)&img_depth.height);
     img_depth.encoding = sensor_msgs::image_encodings::TYPE_32FC1;
     img_depth.is_bigendian = 0;
-    img_depth.step = sizeof(float) * w;
+    img_depth.step = sizeof(float) * img_depth.width;
     std::size_t data_size = img_depth.width * img_depth.height;
     img_depth.data.resize(data_size * sizeof(float));
-
-    cv_img_depth.create(h, w, CV_32FC1); // unused by now; not sure if I can use it to improve speed
 
     if (rgb_info.D.size() == 0)
     {
@@ -441,12 +437,15 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     }
   }
 
+  int32_t w = img_depth.width;
+  int32_t h = img_depth.height;
+
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr current_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
   current_cloud->header.frame_id = cloud.header.frame_id;
-  current_cloud->height = img_depth.height;
-  current_cloud->width  = img_depth.width;
+  current_cloud->width  = w;
+  current_cloud->height = h;
   current_cloud->is_dense = false;
-  current_cloud->points.resize(img_depth.width * img_depth.height);
+  current_cloud->points.resize(w * h);
 
   ++g_dFrames;
 
@@ -456,48 +455,36 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   // Dump depth map on image message, though we must do some post-processing for saturated pixels
   std::memcpy(img_depth.data.data(), data.depthMapFloatingPoint, img_depth.data.size());
 
-  int count = -1;
-  for (int i = 0; i < img_depth.height; i++)
+  for (int count = 0; count < w * h; count++)
   {
-    for (int j = 0; j < img_depth.width; j++)
+    // Convert softkinetic vertices into a kinect-like coordinates pointcloud
+    current_cloud->points[count].x =   data.verticesFloatingPoint[count].z;
+    current_cloud->points[count].y = - data.verticesFloatingPoint[count].x;
+    current_cloud->points[count].z =   data.verticesFloatingPoint[count].y;
+
+    // Saturated pixels on depthMapFloatingPoint have -1 value, but on openni are NaN
+    if (data.depthMapFloatingPoint[count] < 0.0)
     {
-      // Convert softkinetic vertices into a kinect-like coordinates pointcloud
-      count++;
-      if (data.verticesFloatingPoint[count].z == 32001)
-      {
-        current_cloud->points[count].x = 0;
-      }
-      else
-      {
-        current_cloud->points[count].x = data.verticesFloatingPoint[count].z;
-      }
-      current_cloud->points[count].y = - data.verticesFloatingPoint[count].x;
-      current_cloud->points[count].z =   data.verticesFloatingPoint[count].y;
+      *reinterpret_cast<float*>(&img_depth.data[count*sizeof(float)]) =
+          std::numeric_limits<float>::quiet_NaN();
+    }
 
-      // Saturated pixels on depthMapFloatingPoint have -1 value, but on openni are NaN
-      if (data.depthMapFloatingPoint[count] < 0.0)
-      {
-        *reinterpret_cast<float*>(&img_depth.data[count*sizeof(float)]) =
-            std::numeric_limits<float>::quiet_NaN();
-      }
-
-      // Get mapping between depth map and color map, assuming we have a RGB image
-      if (img_rgb.data.size() == 0)
-      {
-        ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
-        continue;
-      }
-      UV uv = data.uvMap[count];
-      if (uv.u != -FLT_MAX && uv.v != -FLT_MAX)
-      {
-        // Within bounds: depth fov is significantly wider than color's
-        // one, so there are black points in the borders of the pointcloud
-        int x_pos = (int)round(uv.u*img_rgb.width);
-        int y_pos = (int)round(uv.v*img_rgb.height);
-        current_cloud->points[count].b = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[0];
-        current_cloud->points[count].g = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[1];
-        current_cloud->points[count].r = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[2];
-      }
+    // Get mapping between depth map and color map, assuming we have a RGB image
+    if (img_rgb.data.size() == 0)
+    {
+      ROS_WARN_THROTTLE(2.0, "Color image is empty; pointcloud will be colorless");
+      continue;
+    }
+    UV uv = data.uvMap[count];
+    if (uv.u != -FLT_MAX && uv.v != -FLT_MAX)
+    {
+      // Within bounds: depth fov is significantly wider than color's
+      // one, so there are black points in the borders of the pointcloud
+      int x_pos = (int)round(uv.u*img_rgb.width);
+      int y_pos = (int)round(uv.v*img_rgb.height);
+      current_cloud->points[count].b = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[0];
+      current_cloud->points[count].g = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[1];
+      current_cloud->points[count].r = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[2];
     }
   }
 
@@ -515,13 +502,13 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   }
 
   // Check for usage of passthrough filtering
-  if(use_passthrough_filter)
+  if (use_passthrough_filter)
   {
     filterPassThrough(current_cloud);
   }
 
   // Check for usage of frustum culling filtering
-  if(use_frustum_culling_filter)
+  if (use_frustum_culling_filter)
   {
     filterFrustumCulling(current_cloud);
   }
@@ -1051,7 +1038,7 @@ int main(int argc, char* argv[])
     g_context.startNodes();
     g_context.run();
   }
-  
+
   // Close out all nodes
   if (g_cnode.isSet())
     g_context.unregisterNode(g_cnode);
