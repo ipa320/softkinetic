@@ -338,12 +338,12 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
   // (X right, Y down, Z forward), which is used by this RGBD camera.
   // See:
   // http://docs.pointclouds.org/trunk/classpcl_1_1_frustum_culling.html#ae22a939225ebbe244fcca8712133fcf3
-  // XXX NOT WORKING ON INDIGO!!! I SUPOSSE BECAUSE WE USE KINECT FRAME, NO SOFTKINECTIC ONE
+  // XXX We are not using the same frame for the pointcloud as kinect! see issue #46
   Eigen::Matrix4f pose = Eigen::Matrix4f::Identity();
   Eigen::Matrix4f T;
-  T << 0, 0, 1, 0,
+  T << 1, 0, 0, 0,
+       0, 0, 1, 0,
        0,-1, 0, 0,
-       1, 0, 0, 0,
        0, 0, 0, 1;
   pose *= T;
 
