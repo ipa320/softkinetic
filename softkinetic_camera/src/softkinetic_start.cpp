@@ -455,9 +455,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 
   ++g_dFrames;
 
-  Vertex p3DPoints[1];
-  Point2D p2DPoints[1];
-
   // Dump depth map on image message, though we must do some post-processing for saturated pixels
   std::memcpy(img_depth.data.data(), data.depthMapFloatingPoint, img_depth.data.size());
 
