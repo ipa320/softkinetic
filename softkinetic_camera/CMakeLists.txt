@@ -1,7 +1,16 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(softkinetic_camera)
 
-find_package(catkin REQUIRED COMPONENTS roscpp std_msgs pcl_ros cv_bridge image_transport camera_info_manager)
+find_package(catkin REQUIRED
+  COMPONENTS
+    roscpp
+    std_msgs
+    pcl_ros
+    cv_bridge
+    image_transport
+    camera_info_manager
+    message_generation
+    dynamic_reconfigure)
 
 # find the DepthSense SDK
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
@@ -15,23 +24,15 @@ Cannot continue, aborting.")
   return()
 endif()
 
-
-#######################################
-## Declare ROS messages and services ##
-#######################################
+generate_dynamic_reconfigure_options(cfg/Softkinetic.cfg)
 
 ###################################
 ## catkin specific configuration ##
 ###################################
-## The catkin_package macro generates cmake config files for your package
-## Declare things to be passed to dependent projects
-## INCLUDE_DIRS: uncomment this if you package contains header files
-## LIBRARIES: libraries you create in this project that dependent projects also need
-## CATKIN_DEPENDS: catkin_packages dependent projects also need
-## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  CATKIN_DEPENDS roscpp std_msgs pcl_ros cv_bridge camera_info_manager
+  CATKIN_DEPENDS roscpp std_msgs pcl_ros cv_bridge image_transport camera_info_manager message_runtime dynamic_reconfigure
 )
+
 ###########
 ## Build ##
 ###########
@@ -42,6 +43,7 @@ include_directories(
 )
 
 add_executable(softkinetic_bringup_node src/softkinetic_start.cpp)
+add_dependencies(softkinetic_bringup_node ${PROJECT_NAME}_gencfg)
 target_link_libraries(softkinetic_bringup_node ${DepthSenseSDK_LIBRARIES} ${catkin_LIBRARIES})
 
 install(TARGETS softkinetic_bringup_node
@@ -50,13 +52,7 @@ install(TARGETS softkinetic_bringup_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-install(DIRECTORY launch
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-)
-
-install(DIRECTORY meshes
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-)
-install(DIRECTORY urdf
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
-)
+foreach(dir config launch meshes urdf)
+  install(DIRECTORY ${dir}/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/${dir})
+endforeach()
