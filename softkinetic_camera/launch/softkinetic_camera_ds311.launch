@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+Demo launch file to run single softkinetic camera in stand alone (no other /tf) setup with Rviz
+The arguments given are the device indices of the cameras determined by the DepthSense deamon.
+-->
+<launch>
+  <arg name="depth" default="true" />
+  <arg name="color" default="true" />
+
+  <node name="softkinetic_camera" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="0" output="screen" >
+    <param name="enable_depth" type="bool" value="$(arg depth)" />
+    <param name="enable_color" type="bool" value="$(arg color)" />
+
+    <rosparam file="$(find softkinetic_camera)/config/softkinetic_camera_ds311.yaml" command="load" />
+  </node>
+</launch>

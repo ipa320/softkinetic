@@ -1,0 +1,32 @@
+camera_link         : softkinetic_camera_link
+confidence_threshold: 200
+
+# Downsampling (using PCL voxel grid filter)
+use_voxel_grid_filter: true
+voxel_grid_size      : 0.02
+
+# Outlier removal (using PCL radius outlier removal filter)
+# Note that this is applied on the output of all other filters; can take too long if not
+use_radius_outlier_filter: false
+search_radius    : 0.05
+min_neighbours   : 50
+
+# PassThrough filter
+use_passthrough_filter: false
+limit_min             :  0.01
+limit_max             : 10.0
+
+# Frustum Culling filter
+use_frustum_culling_filter: false
+hfov                      :  40.0
+vfov                      :  60.0
+near_plane                :   0.01
+far_plane                 :  10.0
+
+depth_mode        : long   # close or long
+depth_frame_format: QVGA   # ignored
+depth_frame_rate  : 25     # 25, 30, 50, 60
+
+color_compression : MJPEG  # MJPEG, YUY2
+color_frame_format: VGA    # QQVGA, QVGA, VGA, WXGA, NHD
+color_frame_rate  : 25     # 25, 30
