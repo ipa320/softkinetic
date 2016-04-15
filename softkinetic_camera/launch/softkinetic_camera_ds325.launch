@@ -27,7 +27,7 @@ The arguments given are the device indices of the cameras determined by the Dept
 
     <param name="enable_color"              type="bool"      value="$(arg color)"  />
     <param name="color_compression"         type="string"    value="MJPEG" /> <!-- YUY2, MJPEG -->
-    <param name="color_frame_format"        type="string"    value="WXGA"  /> <!-- QQVGA, QVGA, VGA, WXGA, NHD -->
+    <param name="color_frame_format"        type="string"    value="WXGA_H"  /> <!-- QQVGA, QVGA, VGA, WXGA_H, NHD -->
     <param name="color_frame_rate"          type="int"       value="25"    /> <!-- 25, 30 -->
   </node>
 </launch>

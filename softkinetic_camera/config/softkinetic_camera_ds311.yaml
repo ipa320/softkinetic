@@ -28,5 +28,5 @@ depth_frame_format: QVGA   # ignored
 depth_frame_rate  : 25     # 25, 30, 50, 60
 
 color_compression : MJPEG  # MJPEG, YUY2
-color_frame_format: VGA    # QQVGA, QVGA, VGA, WXGA, NHD
+color_frame_format: VGA    # QQVGA, QVGA, VGA, WXGA_H, NHD
 color_frame_rate  : 25     # 25, 30
