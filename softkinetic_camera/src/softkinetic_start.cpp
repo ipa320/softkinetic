@@ -309,6 +309,7 @@ void filterCloudRadiusBased(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filt
   ror.setInputCloud(cloud_to_filter);
   ror.setRadiusSearch(search_radius);
   ror.setMinNeighborsInRadius(min_neighbours);
+  ror.setKeepOrganized(true);
   // apply filter
   ROS_DEBUG_STREAM("Starting radius outlier removal filtering");
   int before = cloud_to_filter->size();
@@ -327,6 +328,7 @@ void filterPassThrough(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter)
   pt.setInputCloud(cloud_to_filter);
   pt.setFilterFieldName("x");
   pt.setFilterLimits(limit_min, limit_max);
+  pt.setKeepOrganized(true);
   // apply filter
   ROS_DEBUG_STREAM("Starting passthrough filtering");
   int before = cloud_to_filter->size();
@@ -362,6 +364,7 @@ void filterFrustumCulling(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_to_filter
   fc.setVerticalFOV(vfov);
   fc.setNearPlaneDistance(near_plane);
   fc.setFarPlaneDistance(far_plane);
+  fc.setKeepOrganized(true);
   // apply filter
   ROS_DEBUG_STREAM("Starting frustum culling filtering");
   int before = cloud_to_filter->size();
