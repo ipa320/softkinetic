@@ -967,7 +967,7 @@ int main(int argc, char* argv[])
   color_compression = colorCompression(color_compression_str);
 
   std::string color_frame_format_str;
-  nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA");
+  nh.param<std::string>("color_frame_format", color_frame_format_str, "WXGA_H");
   color_frame_format = colorFrameFormat(color_frame_format_str);
 
   nh.param<int>("color_frame_rate", color_frame_rate, 25);
