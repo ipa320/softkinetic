@@ -169,6 +169,10 @@ DepthSense::CompressionType color_compression;
 DepthSense::FrameFormat color_frame_format;
 int color_frame_rate;
 
+/* Serial Number parameters */
+bool use_serial;
+std::string serial;
+
 DepthSense::DepthNode::CameraMode depthMode(const std::string& depth_mode_str)
 {
     if ( depth_mode_str == "long" )
@@ -1016,6 +1020,33 @@ int main(int argc, char* argv[])
     {
       device_index = atoi(argv[1]);
     }
+    else
+    {
+      nh.param<bool>("use_serial", use_serial, false);
+      if (use_serial)
+      {
+        nh.getParam("serial", serial);
+        bool serialDeviceFound = false;
+        for (int i=0; i < da.size(); i++)
+        {
+          if (!da[i].getSerialNumber().compare(serial))
+          {
+            device_index = i;
+            serialDeviceFound = true;
+          }
+        }
+        if (serialDeviceFound)
+        {
+          ROS_INFO_STREAM("Serial number device found");
+        }
+        else
+        {
+          ROS_ERROR_STREAM("Serial number device not found !!");
+          ROS_ERROR_STREAM("Required Serial Number: " << serial);
+        }
+      }
+    }
+    ROS_INFO_STREAM("Serial Number: " << da[device_index].getSerialNumber());
 
     g_bDeviceFound = true;
 
