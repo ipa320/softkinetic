@@ -790,6 +790,9 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
   color_frame_format = colorFrameFormat(config.color_frame_format);
   color_frame_rate   = config.color_frame_rate;
 
+  use_serial = config.use_serial;
+  serial = config.serial;
+
   ROS_DEBUG_STREAM("New configuration:\n" <<
           //"camera_link = " << camera_link << "\n" <<
 
@@ -820,7 +823,10 @@ void reconfigure_callback(softkinetic_camera::SoftkineticConfig& config, uint32_
           "enable_color = " << (color_enabled ? "ON" : "OFF" ) << "\n" <<
           "color_compression = " << config.color_compression << "\n" <<
           "color_frame_format = " << config.color_frame_format << "\n" <<
-          "color_frame_rate = " << color_frame_rate << "\n");
+          "color_frame_rate = " << color_frame_rate << "\n" <<
+          
+          "use_serial = " << use_serial << "\n" <<
+          "serial = " << serial << "\n");
 }
 
 /*----------------------------------------------------------------------------*/
