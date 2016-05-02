@@ -537,6 +537,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   pcl::toROSMsg(*current_cloud, cloud);
 
   img_depth.header.stamp = ros::Time::now();
+  cloud.header.stamp = ros::Time::now();
   depth_info.header      = img_depth.header;
 
   pub_cloud.publish(cloud);
