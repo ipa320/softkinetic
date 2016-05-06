@@ -478,11 +478,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
       continue;
     }
 
-    // Convert softkinetic vertices into a kinect-like coordinates pointcloud
-    current_cloud->points[count].x =   data.verticesFloatingPoint[count].x + 0.025;
-    current_cloud->points[count].y = - data.verticesFloatingPoint[count].y;
-    current_cloud->points[count].z =   data.verticesFloatingPoint[count].z;
-
     // Get mapping between depth map and color map, assuming we have a RGB image
     if (img_rgb.data.size() == 0)
     {
@@ -500,6 +495,14 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
       current_cloud->points[count].g = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[1];
       current_cloud->points[count].r = cv_img_rgb.at<cv::Vec3b>(y_pos, x_pos)[2];
     }
+    else
+    {
+      continue;
+    }
+    // Convert softkinetic vertices into a kinect-like coordinates pointcloud
+    current_cloud->points[count].x =   data.verticesFloatingPoint[count].x + 0.025;
+    current_cloud->points[count].y = - data.verticesFloatingPoint[count].y;
+    current_cloud->points[count].z =   data.verticesFloatingPoint[count].z;
   }
 
   // Check for usage of voxel grid filtering to downsample point cloud
