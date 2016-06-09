@@ -23,8 +23,18 @@ The arguments given are the device indices of the cameras determined by the Dept
     <param name="color_frame_rate" value="25" /> <!-- 25, 30 -->
   </node>
 
+  <arg name="pi/2" value="1.5707963267948966" />
+  <arg name="optical_rotate" value="0 0 0 -$(arg pi/2) 0 -$(arg pi/2)" />
   <node pkg="tf" type="static_transform_publisher" name="softkinect_tf"
-        args="0 0 0 0 0 1.2 /base /softkinetic_camera_link 40" />
+        args="0 0 0 0 0 0 /base /softkinetic_camera_link 40" />
+  <node pkg="tf" type="static_transform_publisher" name="softkinect_rgb_frame_tf"
+        args="0 0.00090 0  0 0 0 /softkinetic_camera_link /softkinetic_camera_rgb_frame 40" />
+  <node pkg="tf" type="static_transform_publisher" name="softkinect_rgb_optical_tf"
+        args="$(arg optical_rotate) /softkinetic_camera_rgb_frame /softkinetic_camera_rgb_optical_frame 40" />
+  <node pkg="tf" type="static_transform_publisher" name="softkinect_depth_frame_tf"
+        args="0 -0.0090 0.005 0 0 0 /softkinetic_camera_link /softkinetic_camera_depth_frame 40" />
+  <node pkg="tf" type="static_transform_publisher" name="softkinect_depth_optical_tf"
+        args="$(arg optical_rotate) /softkinetic_camera_depth_frame /softkinetic_camera_depth_optical_frame 40" />
 
   <node pkg="rviz" type="rviz" name="softkinect_rviz" respawn="false"  required="true"
 	args="-d $(find softkinetic_camera)/launch/softkinetic.rviz"  />
