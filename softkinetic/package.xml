@@ -15,7 +15,6 @@
 
   <run_depend>softkinetic_camera</run_depend>
 
-
   <export>
     <metapackage/>
   </export>

@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!--
+Demo launch file to run single softkinetic camera in stand alone (no other /tf) setup with Rviz
+The arguments given are the device indices of the cameras determined by the DepthSense deamon.
+-->
+<launch>
+  <arg name="depth" default="true" />
+  <arg name="color" default="true" />
+  <node name="softkinetic_camera" pkg="softkinetic_camera" type="softkinetic_bringup_node" args="0" output="screen" >
+    <param name="camera_link"               type="string"    value="softkinetic_camera_link" />
+    <param name="confidence_threshold"      type="int"       value="200"   />
+
+    <!-- Downsampling (using PCL voxel grid filter) -->
+    <param name="use_voxel_grid_filter"     type="bool"      value="false" />
+    <param name="voxel_grid_size"           type="double"    value="0.03"  />
+
+    <!-- Outlier removal (using PCL radius outlier removal filter) -->
+    <!-- Note that this is applied on the output of the downsampling filter! -->
+    <param name="use_radius_outlier_filter" type="bool"      value="false" />
+    <param name="search_radius"             type="double"    value="0.05"  />
+    <param name="min_neighbours"            type="int"       value="50"    />
+
+    <param name="enable_depth"              type="bool"      value="$(arg depth)"  />
+    <param name="depth_mode"                type="string"    value="close" /> <!-- close or long -->
+    <param name="depth_frame_format"        type="string"    value="QVGA"  /> <!-- ignored -->
+    <param name="depth_frame_rate"          type="int"       value="25"    /> <!-- 25, 30, 50, 60 -->
+
+    <param name="enable_color"              type="bool"      value="$(arg color)"  />
+    <param name="color_compression"         type="string"    value="MJPEG" /> <!-- YUY2, MJPEG -->
+    <param name="color_frame_format"        type="string"    value="WXGA_H"  /> <!-- QQVGA, QVGA, VGA, WXGA_H, NHD -->
+    <param name="color_frame_rate"          type="int"       value="25"    /> <!-- 25, 30 -->
+  </node>
+</launch>
