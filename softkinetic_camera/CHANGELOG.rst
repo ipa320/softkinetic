@@ -2,8 +2,8 @@
 Changelog for package softkinetic_camera
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.6.1 (2016-06-21)
+------------------
 * 0.6.1
 * added CHANGELOG
 * consistent version nummber
