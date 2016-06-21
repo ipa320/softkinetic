@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package>
   <name>softkinetic</name>
-  <version>0.0.0</version>
+  <version>0.6.1</version>
   <description>The softkinetic package</description>
 
   <maintainer email="fmw@ipa-fhg.de">florian Weisshardt</maintainer>
