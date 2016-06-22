@@ -11,7 +11,7 @@ Changelog for package softkinetic
   Also puts indigo branch up to date with hydro, so PR `#33 <https://github.com/ipa320/softkinetic/issues/33>`_ is unnecessary
 * Metapackages don't have build_depends
 * Remove a harmless warning when compiling
-  and also when running: metapackages should not contain build dependencies.
+  and also when running: metapackages should not contain build dependencies.
 * fix CMakeLists of metapackage
 * add metapackage
 * Contributors: Florian Weisshardt, corot, ipa-nhg
