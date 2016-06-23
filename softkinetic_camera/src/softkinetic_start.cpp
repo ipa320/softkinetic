@@ -270,8 +270,17 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
   std::memcpy(img_rgb.data.data(),  cv_img_rgb.ptr(),  img_rgb.data.size());
   std::memcpy(img_mono.data.data(), cv_img_mono.ptr(), img_mono.data.size());
 
+  // the time of capture of the sample, expressed in us
+  // http://www.softkinetic.com/support/Forum/aft/1876
+  // it does appear to be the CLOCK_MONOTONIC time (system up time).
+  struct timespec uptime;
+  clock_gettime(CLOCK_MONOTONIC, &uptime);
+  ros::Time now = ros::Time::now();
+  ros::Time upm = ros::Time(uptime.tv_sec, uptime.tv_nsec);
+  ros::Time timeOfCapture((double)data.timeOfCapture/1000000.0 + (now - upm).toSec() );
+
   // Ensure that all the images and camera info are timestamped and have the proper frame id
-  img_rgb.header.stamp = ros::Time::now();
+  img_rgb.header.stamp = timeOfCapture;
   img_mono.header      = img_rgb.header;
   rgb_info.header      = img_rgb.header;
 
@@ -536,8 +545,16 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   // Convert current_cloud to PointCloud2 and publish
   pcl::toROSMsg(*current_cloud, cloud);
 
-  img_depth.header.stamp = ros::Time::now();
-  cloud.header.stamp = ros::Time::now();
+  // the time of capture of the sample, expressed in us
+  // it does appear to be the CLOCK_MONOTONIC time (system up time).
+  struct timespec uptime;
+  clock_gettime(CLOCK_MONOTONIC, &uptime);
+  ros::Time now = ros::Time::now();
+  ros::Time upm = ros::Time(uptime.tv_sec, uptime.tv_nsec);
+  ros::Time timeOfCapture((double)data.timeOfCapture/1000000.0 + (now - upm).toSec() );
+
+  img_depth.header.stamp = timeOfCapture;
+  cloud.header.stamp = timeOfCapture;
   depth_info.header      = img_depth.header;
 
   pub_cloud.publish(cloud);
