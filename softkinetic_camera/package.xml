@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package>
   <name>softkinetic_camera</name>
-  <version>0.6.1</version>
+  <version>0.6.2</version>
   <description>Softkinetic cameras drivers, including filters.</description>
 
   <maintainer email="flg@ipa.fhg.de">Felipe Garcia Lopez</maintainer>

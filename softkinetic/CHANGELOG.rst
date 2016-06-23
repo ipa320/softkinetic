@@ -2,6 +2,11 @@
 Changelog for package softkinetic
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.6.2 (2016-06-23)
+------------------
+* Update CHANGELOG.rst
+* Contributors: Nadia Hammoudeh García
+
 0.6.1 (2016-06-21)
 ------------------
 * 0.6.1
