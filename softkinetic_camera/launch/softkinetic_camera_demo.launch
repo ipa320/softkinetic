@@ -19,12 +19,12 @@ The arguments given are the device indices of the cameras determined by the Dept
     <param name="depth_frame_format" value="QVGA" /> <!-- ignored -->
     <param name="depth_frame_rate" value="25" /> <!-- 25, 30, 50, 60 -->
     <param name="color_compression" value="MJPEG" /> <!-- YUY2, MJPEG -->
-    <param name="color_frame_format" value="VGA" /> <!-- QQVGA, QVGA, VGA, WXGA_H, NHD -->
+    <param name="color_frame_format" value="WXGA_H" /> <!-- QQVGA, QVGA, VGA, WXGA_H, NHD -->
     <param name="color_frame_rate" value="25" /> <!-- 25, 30 -->
   </node>
 
   <node pkg="tf" type="static_transform_publisher" name="softkinect_tf"
-        args="0 0 0 0 0 0 /base /softkinetic_camera_rgb_optical_frame 40" />
+        args="0 0 0 0 0 1.2 /base /softkinetic_camera_link 40" />
 
   <node pkg="rviz" type="rviz" name="softkinect_rviz" respawn="false"  required="true"
 	args="-d $(find softkinetic_camera)/launch/softkinetic.rviz"  />
