@@ -479,9 +479,9 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
     }
 
     // Convert softkinetic vertices into a kinect-like coordinates pointcloud
-    current_cloud->points[count].x =   data.verticesFloatingPoint[count].z;
-    current_cloud->points[count].y = - data.verticesFloatingPoint[count].x;
-    current_cloud->points[count].z =   data.verticesFloatingPoint[count].y;
+    current_cloud->points[count].x =   data.verticesFloatingPoint[count].x;
+    current_cloud->points[count].y = - data.verticesFloatingPoint[count].y;
+    current_cloud->points[count].z =   data.verticesFloatingPoint[count].z;
 
     // Get mapping between depth map and color map, assuming we have a RGB image
     if (img_rgb.data.size() == 0)
@@ -840,17 +840,6 @@ int main(int argc, char* argv[])
   // Override the default ROS SIGINT handler to call g_context.quit() and avoid escalating to SIGTERM
   signal(SIGINT, sigintHandler);
 
-  // Get frame id from parameter server
-  std::string softkinetic_link;
-  if (!nh.hasParam("camera_link"))
-  {
-    ROS_ERROR_STREAM("For " << ros::this_node::getName() << ", parameter 'camera_link' is missing.");
-    ros_node_shutdown = true;
-  }
-
-  nh.param<std::string>("camera_link", softkinetic_link, "softkinetic_link");
-  cloud.header.frame_id = softkinetic_link;
-
   // Fill in the color and depth images message header frame id
   std::string optical_frame;
   if (nh.getParam("rgb_optical_frame", optical_frame))
@@ -867,10 +856,12 @@ int main(int argc, char* argv[])
   if (nh.getParam("depth_optical_frame", optical_frame))
   {
     img_depth.header.frame_id = optical_frame.c_str();
+    cloud.header.frame_id = optical_frame.c_str();
   }
   else
   {
     img_depth.header.frame_id = "/softkinetic_depth_optical_frame";
+    cloud.header.frame_id = "/softkinetic_depth_optical_frame";
   }
 
   // Get confidence threshold from parameter server
